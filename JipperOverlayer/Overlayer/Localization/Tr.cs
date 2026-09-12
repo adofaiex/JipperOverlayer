@@ -46,6 +46,8 @@ public static class Tr
         TextEffectShadowOffsetX, TextEffectShadowOffsetY,
         TextEffectOutline, TextEffectOutlineColor, TextEffectOutlineWidth, TextEffectOutlineSoftness,
         DetailedProgress, TimeDecimals,
+        ShowXScore, XScoreColor, TextType,
+        ElemAvgTiming, ElemXScore, ElemPAcc, ElemPXAcc, ElemPXScore,
         Count
     }
 
@@ -88,7 +90,9 @@ public static class Tr
             "Text Effects", "Shadow", "Shadow Color", "Shadow Softness",
             "Shadow Offset X", "Shadow Offset Y",
             "Outline", "Outline Color", "Outline Width", "Outline Softness",
-            "Detailed Progress (cur / total)", "Time With Decimals" ],
+            "Detailed Progress (cur / total)", "Time With Decimals",
+            "Show XScore", "XScore Color", "Text Type",
+            "Avg Timing", "XScore", "P.Accuracy", "P.XAccuracy", "P.XScore" ],
 
         /* 1  Korean */ [ "크기", "진행도 표시", "정확도 표시", "X정확도 표시",
             "음악 시간 표시", "맵 시간 표시", "음악 없을 때 맵 시간",
@@ -127,7 +131,9 @@ public static class Tr
             "텍스트 효과", "그림자", "그림자 색상", "그림자 부드러움",
             "그림자 오프셋 X", "그림자 오프셋 Y",
             "아웃라인", "아웃라인 색상", "아웃라인 두께", "아웃라인 부드러움",
-            "상세 진행도 (현재 / 전체)", "시간 소수점 표시" ],
+            "상세 진행도 (현재 / 전체)", "시간 소수점 표시",
+            "XScore 표시", "XScore 색상", "텍스트 타입",
+            "평균 타이밍", "XScore", "P.정확도", "P.X정확도", "P.XScore" ],
 
         /* 2  Chinese */ [ "大小", "显示进度", "显示准确率", "显示X准确率",
             "显示音乐时间", "显示地图时间", "无音乐时显示地图时间",
@@ -166,7 +172,9 @@ public static class Tr
             "文本特效", "阴影", "阴影颜色", "阴影柔和度",
             "阴影偏移 X", "阴影偏移 Y",
             "描边", "描边颜色", "描边宽度", "描边柔和度",
-            "详细进度（当前 / 总数）", "时间显示小数" ],
+            "详细进度（当前 / 总数）", "时间显示小数",
+            "显示XScore", "XScore颜色", "文本类型",
+            "平均时机", "XScore", "P.准确率", "P.X准确率", "P.XScore" ],
     ];
 
     public static string Get(Key key)

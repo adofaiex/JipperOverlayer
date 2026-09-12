@@ -16,6 +16,8 @@ public class JongyeolModule
     private readonly Overlay _overlay;
 
     public TextMeshProUGUI FPSText, AuthorText, StateText, DeathText, StartText, TimingText;
+    // V1.1.6 新增：Timing 平均行、XScore、三个潜力值文本（借鉴 JipperResourcePack）
+    public TextMeshProUGUI AvgTimingText, XScoreText, PotentialAccuracyText, PotentialXAccuracyText, PotentialXScoreText;
     public readonly List<TextMeshProUGUI> ExtraTexts = new();
 
     private List<float> _timings;
@@ -43,9 +45,15 @@ public class JongyeolModule
         _overlay.SetupMainText("Death", ref DeathText);
         _overlay.SetupMainText("Start", ref StartText);
         _overlay.SetupMainText("Timing", ref TimingText);
+        _overlay.SetupMainText("AvgTiming", ref AvgTimingText);
+        _overlay.SetupMainText("XScore", ref XScoreText);
+        _overlay.SetupMainText("PotAccuracy", ref PotentialAccuracyText);
+        _overlay.SetupMainText("PotXAccuracy", ref PotentialXAccuracyText);
+        _overlay.SetupMainText("PotXScore", ref PotentialXScoreText);
         _overlay.DeathText = DeathText;
         _overlay.StateText = StateText;
-        ExtraTexts.AddRange([FPSText, AuthorText, StateText, DeathText, StartText, TimingText]);
+        ExtraTexts.AddRange([FPSText, AuthorText, StateText, DeathText, StartText, TimingText,
+            AvgTimingText, XScoreText, PotentialAccuracyText, PotentialXAccuracyText, PotentialXScoreText]);
     }
 
     // ===== SetupLocation — replaces Overlay.SetupLocationMain when active =====
@@ -96,6 +104,11 @@ public class JongyeolModule
         DisplayElement.Death => DeathText,
         DisplayElement.Start => StartText,
         DisplayElement.Timing => TimingText,
+        DisplayElement.AvgTiming => AvgTimingText,
+        DisplayElement.XScore => XScoreText,
+        DisplayElement.PotentialAccuracy => PotentialAccuracyText,
+        DisplayElement.PotentialXAccuracy => PotentialXAccuracyText,
+        DisplayElement.PotentialXScore => PotentialXScoreText,
         _ => null,
     };
 
@@ -120,6 +133,14 @@ public class JongyeolModule
             DisplayElement.Best => checkAuto && s.ShowBest,
             DisplayElement.State => s.ShowState,
             DisplayElement.Timing => checkAuto && s.ShowTiming,
+            // AvgTiming 行仅在 Both 模式（两行分开）时有意义
+            DisplayElement.AvgTiming => checkAuto && s.ShowTiming && s.TimingTextType == TimingTextType.Both,
+            // XScore 与潜力值文本的可见性跟随所属功能与其文本类型
+            DisplayElement.XScore => checkAuto && s.ShowXScore && HitMarginCompat.HasNativeXPerfect,
+            // 潜力值独立文本仅单人模式（coop 为合并文本，内联显示潜力值）
+            DisplayElement.PotentialAccuracy => checkAuto && !VersionSafe.IsCoopMode() && s.ShowAccuracy && s.AccuracyTextType is PotentialTextType.Potential or PotentialTextType.Both,
+            DisplayElement.PotentialXAccuracy => checkAuto && !VersionSafe.IsCoopMode() && s.ShowXAccuracy && s.XAccuracyTextType is PotentialTextType.Potential or PotentialTextType.Both,
+            DisplayElement.PotentialXScore => checkAuto && !VersionSafe.IsCoopMode() && s.ShowXScore && HitMarginCompat.HasNativeXPerfect && s.XScorePotentialType is PotentialTextType.Potential or PotentialTextType.Both,
             _ => false,
         };
     }
@@ -194,6 +215,10 @@ public class JongyeolModule
     {
         var s = Main.Settings;
         if (!s.ShowTiming || !_overlay.GameObject.activeSelf) return;
+        // 自动打击过滤（借鉴 JRP IsTimingAvailable）：自动播放/自动地板的命中使用理想时间戳
+        // （≈0ms 假样本），混入统计会把平均值拉向 0
+        if (GameRefs.IsAuto) return;
+        if (GameRefs.CurrentFloor?.nextfloor is { auto: true }) return;
         // 自愈：补丁无条件挂载后，首次命中可能早于 SetupLocation 的初始化
         _timings ??= [];
         if (_timings.Count >= 5000)
@@ -209,8 +234,37 @@ public class JongyeolModule
 
     private void RenderTiming(float timing)
     {
-        TimingText.text = $"<color=white>{Main.Settings.Labels.Timing} |</color> {Math.Round(timing, DecimalPrecision)} ({Math.Round(_timingsSum / _timings.Count, DecimalPrecision)})";
-        TimingText.color = Main.Settings.Colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
+        int dp = Main.Settings.TimingDecimal;
+        float average = _timings == null || _timings.Count == 0 ? 0 : (float)(_timingsSum / _timings.Count);
+        var labels = Main.Settings.Labels;
+        var colors = Main.Settings.Colors;
+        switch (Main.Settings.TimingTextType)
+        {
+            case TimingTextType.Timing:
+                TimingText.text = $"<color=white>{labels.Timing} |</color> {Math.Round(timing, dp)}";
+                TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
+                break;
+            case TimingTextType.AvgTiming:
+                if (AvgTimingText)
+                {
+                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg) |</color> {Math.Round(average, dp)}";
+                    AvgTimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(average), 150) / 150);
+                }
+                break;
+            case TimingTextType.Both:
+                TimingText.text = $"<color=white>{labels.Timing} |</color> {Math.Round(timing, dp)}";
+                TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
+                if (AvgTimingText)
+                {
+                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg) |</color> {Math.Round(average, dp)}";
+                    AvgTimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(average), 150) / 150);
+                }
+                break;
+            default: // BothInOneLine：一行双值（原行为）
+                TimingText.text = $"<color=white>{labels.Timing} |</color> {Math.Round(timing, dp)} ({Math.Round(average, dp)})";
+                TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
+                break;
+        }
     }
 
     // 标签编辑后重绘 Timing：用缓存的最近一次采样，不向统计里追加新样本。

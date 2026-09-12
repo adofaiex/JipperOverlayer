@@ -14,7 +14,6 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     public float CurBest = -1;
     public int CurCheck;
     public int LastCheckpoint = -1;
-    public int DecimalPrecision = 2;
     private string[] _accStrings;
     private string[] _xaccStrings;
 
@@ -51,7 +50,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     protected void SetProgress(ref PlayerData pData, float progress)
     {
         pData.Progress = progress;
-        pData.ProgressString = $" | <color=#{Main.Settings.Colors.GetProgressHex(progress, true)}>{Math.Round(progress * 100, DecimalPrecision)}%</color>";
+        pData.ProgressString = $" | <color=#{Main.Settings.Colors.GetProgressHex(progress, true)}>{Math.Round(progress * 100, Main.Settings.ProgressDecimal)}%</color>";
         if (MaxProgress < progress) MaxProgress = progress;
     }
 
@@ -63,12 +62,13 @@ public class OverlayTextManagerCoop : IOverlayTextManager
 
     public void UpdateAccuracy(Overlay overlay, int index)
     {
-        if (Main.Settings.ShowAccuracy)
+        var s = Main.Settings;
+        if (s.ShowAccuracy)
         {
             if (index == -1)
                 for (int i = 0; i < PlayerDatas.Length; i++)
-                    SetAccuracy(ref PlayerDatas[i], overlay.NoCheckStartTile, i);
-            else SetAccuracy(ref PlayerDatas[index], overlay.NoCheckStartTile, index);
+                    SetAccuracy(ref PlayerDatas[i], overlay, i);
+            else SetAccuracy(ref PlayerDatas[index], overlay, index);
 
             _accStrings[0] = Main.Settings.Labels.Accuracy;
             for (int i = 0; i < PlayerDatas.Length; i++) _accStrings[i + 1] = PlayerDatas[i].AccuracyString;
@@ -85,22 +85,81 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             for (int i = 0; i < PlayerDatas.Length; i++) _xaccStrings[i + 1] = PlayerDatas[i].XAccuracyString;
             overlay.XAccuracyText.text = string.Concat(_xaccStrings);
         }
+        if (s.ShowXScore && HitMarginCompat.HasNativeXPerfect)
+        {
+            if (index == -1)
+                for (int i = 0; i < PlayerDatas.Length; i++)
+                    SetXScore(ref PlayerDatas[i], i);
+            else SetXScore(ref PlayerDatas[index], index);
+
+            var xs = overlay.Jongyeol?.XScoreText;
+            if (xs)
+            {
+                _sb.Clear();
+                _sb.Append("<color=white>XScore |</color>");
+                for (int i = 0; i < PlayerDatas.Length; i++) _sb.Append(PlayerDatas[i].XScoreString);
+                xs.text = _sb.ToString();
+            }
+        }
     }
 
-    protected void SetAccuracy(ref PlayerData pData, int noCheckStartTile, int i)
+    protected void SetAccuracy(ref PlayerData pData, Overlay overlay, int i)
     {
+        var s = Main.Settings;
         float acc = scrMistakesManager.marginTrackers[i].percentAcc;
-        float maxAcc = 1 + (scrPlayerManager.instance.allPlayers[i].planetarySystem.chosenPlanet.currfloor.seqID - noCheckStartTile + 1) * 0.0001f;
+        float maxAcc = 1 + (scrPlayerManager.instance.allPlayers[i].planetarySystem.chosenPlanet.currfloor.seqID - overlay.NoCheckStartTile + 1) * 0.0001f;
         float xacc = scrMistakesManager.marginTrackers[i].percentXAcc;
         if (float.IsNaN(xacc)) xacc = 1;
-        pData.AccuracyString = $" | <color=#{Main.Settings.Colors.GetAccuracyHex(xacc == 1 ? 1 : acc / maxAcc, xacc == 1)}>{Math.Round(acc * 100, DecimalPrecision)}%</color>";
+        string current = Math.Round(acc * 100, s.AccuracyDecimal) + "%";
+        if (s.AccuracyTextType != PotentialTextType.Current)
+        {
+            // 潜力值：各玩家用自己的判定数组外推。coop 无独立潜力文本槽，全部内联进主文本
+            int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
+            int seqID = GameRefs.CurrentSeqID;
+            float potential = AccuracyMath.GetPotentialAccuracy(hits, acc,
+                AccuracyMath.GetJudgedTiles(hits, seqID), AccuracyMath.GetRemainingTiles(seqID));
+            string p = Math.Round(potential * 100, s.AccuracyDecimal) + "%";
+            if (s.AccuracyTextType == PotentialTextType.Potential) current = p;
+            else current += $" ({p})";
+        }
+        pData.AccuracyString = $" | <color=#{s.Colors.GetAccuracyHex(xacc == 1 ? 1 : acc / maxAcc, xacc == 1)}>{current}</color>";
     }
 
     protected void SetXAccuracy(ref PlayerData pData, int i)
     {
+        var s = Main.Settings;
         float xacc = scrMistakesManager.marginTrackers[i].percentXAcc;
         if (float.IsNaN(xacc)) xacc = 1;
-        pData.XAccuracyString = $" | <color=#{Main.Settings.Colors.GetXAccuracyHex(xacc, xacc == 1)}>{Math.Round(xacc * 100, DecimalPrecision)}%</color>";
+        string current = Math.Round(xacc * 100, s.XAccuracyDecimal) + "%";
+        if (s.XAccuracyTextType != PotentialTextType.Current)
+        {
+            int seqID = GameRefs.CurrentSeqID;
+            float potential = AccuracyMath.GetPotentialXAccuracy(xacc, seqID, AccuracyMath.GetRemainingTiles(seqID));
+            string p = Math.Round(potential * 100, s.XAccuracyDecimal) + "%";
+            if (s.XAccuracyTextType == PotentialTextType.Potential) current = p;
+            else current += $" ({p})";
+        }
+        pData.XAccuracyString = $" | <color=#{s.Colors.GetXAccuracyHex(xacc, xacc == 1)}>{current}</color>";
+    }
+
+    protected void SetXScore(ref PlayerData pData, int i)
+    {
+        var s = Main.Settings;
+        int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
+        int seqID = GameRefs.CurrentSeqID;
+        int judged = AccuracyMath.GetJudgedTiles(hits, seqID);
+        int remaining = AccuracyMath.GetRemainingTiles(seqID);
+        int xScore = AccuracyMath.GetXScore(hits);
+        int maxXScore = judged * AccuracyMath.XPerfectValue;
+        string current = AccuracyMath.GetXScoreText(xScore, maxXScore, s.XScoreTextType);
+        if (s.XScorePotentialType != PotentialTextType.Current)
+        {
+            string p = AccuracyMath.GetXScoreText(xScore + remaining * AccuracyMath.XPerfectValue,
+                maxXScore + remaining * AccuracyMath.XPerfectValue, s.XScoreTextType);
+            if (s.XScorePotentialType == PotentialTextType.Potential) current = p;
+            else current += $" ({p})";
+        }
+        pData.XScoreString = $" | <color=#{s.Colors.XScore.GetHex(maxXScore == 0 ? 1 : (float)xScore / maxXScore)}>{current}</color>";
     }
 
     public void UpdateProgress(Overlay overlay)
@@ -108,7 +167,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         var strings = new string[PlayerDatas.Length + 1];
         strings[0] = Main.Settings.Labels.Progress;
         if (overlay.StartTile > 0)
-            strings[0] += $" | <color=#{Main.Settings.Colors.GetProgressHex(overlay.StartProgress, true)}>{Math.Round(overlay.StartProgress * 100, DecimalPrecision)}%</color> ~";
+            strings[0] += $" | <color=#{Main.Settings.Colors.GetProgressHex(overlay.StartProgress, true)}>{Math.Round(overlay.StartProgress * 100, Main.Settings.ProgressDecimal)}%</color> ~";
         for (int i = 0; i < PlayerDatas.Length; i++) strings[i + 1] = PlayerDatas[i].ProgressString;
         overlay.ProgressText.text = string.Concat(strings);
     }
@@ -148,7 +207,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     public void UpdateBestText(Overlay overlay)
     {
         float best = CurBest > MaxProgress || overlay.AutoOnceEnabled ? CurBest : MaxProgress;
-        overlay.BestText.text = $"<color=white>{Main.Settings.Labels.Best} |</color> {Math.Round(best * 100, DecimalPrecision)}%";
+        overlay.BestText.text = $"<color=white>{Main.Settings.Labels.Best} |</color> {Math.Round(best * 100, Main.Settings.BestDecimal)}%";
         overlay.BestText.color = Main.Settings.Colors.GetBestColor(best);
     }
 
@@ -158,6 +217,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         public string ProgressString;
         public string AccuracyString;
         public string XAccuracyString;
+        public string XScoreString;
     }
 
     // ===== Jongyeol-mode helpers (coop, per-player) =====

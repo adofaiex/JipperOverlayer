@@ -32,6 +32,18 @@ public class Settings
     //   TimeDecimals     —— 音乐/地图时间带一位小数
     public bool DetailedProgress, TimeDecimals;
 
+    // ==== 文本类型与 XScore（借鉴 JipperResourcePack V1.5）====
+    public TimingTextType TimingTextType = TimingTextType.BothInOneLine;
+    public XScoreTextType XScoreTextType = XScoreTextType.MaxMinus;
+    public PotentialTextType AccuracyTextType = PotentialTextType.Current;
+    public PotentialTextType XAccuracyTextType = PotentialTextType.Current;
+    public PotentialTextType XScorePotentialType = PotentialTextType.Current;
+    /// <summary>XScore 文本（仅 r149+：游戏原生 XPerfect 计分，X=2、Perfect±=1）</summary>
+    public bool ShowXScore;
+
+    // ==== 每文本独立小数位 ====
+    public int ProgressDecimal = 2, AccuracyDecimal = 2, XAccuracyDecimal = 2, BestDecimal = 2, TimingDecimal = 5;
+
     /// <summary>任一 Jongyeol 扩展文本开启。拆掉总开关后，用它决定「Jongyeol 风格」的连带表现
     /// （富格式进度文本、扩展文本的小数精度等），避免普通模式用户被动接受这些变化。</summary>
     public bool JongyeolStyleActive => ShowFPS || ShowAuthor || ShowState || ShowDeath || ShowStart || ShowTiming;
@@ -263,12 +275,51 @@ public class Settings
             }
 
             ShowAccuracy = Tog(Tr.Get(Tr.Key.ShowAccuracy), ShowAccuracy);
-            if (ShowAccuracy) Colors.Accuracy.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.AccuracyColor),
-                () => { Colors.Accuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
+            if (ShowAccuracy)
+            {
+                Colors.Accuracy.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.AccuracyColor),
+                    () => { Colors.Accuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
+                AccuracyDecimal = DecSlide("accDec", Tr.Key.DecimalPrecision, AccuracyDecimal, 4,
+                    () => Overlayer.Overlay.Instance?.UpdateAccuracy());
+                AccuracyTextType = EnumSel(Tr.Key.TextType, AccuracyTextType, () =>
+                {
+                    var o = Overlayer.Overlay.Instance;
+                    if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
+                });
+            }
 
             ShowXAccuracy = Tog(Tr.Get(Tr.Key.ShowXAccuracy), ShowXAccuracy);
-            if (ShowXAccuracy) Colors.XAccuracy.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.XaccuracyColor),
-                () => { Colors.XAccuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
+            if (ShowXAccuracy)
+            {
+                Colors.XAccuracy.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.XaccuracyColor),
+                    () => { Colors.XAccuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
+                XAccuracyDecimal = DecSlide("xaccDec", Tr.Key.DecimalPrecision, XAccuracyDecimal, 4,
+                    () => Overlayer.Overlay.Instance?.UpdateAccuracy());
+                XAccuracyTextType = EnumSel(Tr.Key.TextType, XAccuracyTextType, () =>
+                {
+                    var o = Overlayer.Overlay.Instance;
+                    if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
+                });
+            }
+
+            // XScore 文本：仅 r149+（游戏原生 XPerfect 计分），r148 无此数据
+            bool xscoreOk = HitMarginCompat.HasNativeXPerfect;
+            bool prevXs = ShowXScore;
+            if (!xscoreOk) GUI.enabled = false;
+            ShowXScore = Tog(Tr.Get(Tr.Key.ShowXScore), ShowXScore);
+            if (!xscoreOk) { GUI.enabled = true; if (ShowXScore != prevXs) ShowXScore = prevXs; }
+            if (xscoreOk && ShowXScore)
+            {
+                Colors.XScore.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.XScoreColor),
+                    () => { Colors.XScore = new([(0.98f, Color.white), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
+                XScoreTextType = EnumSel(Tr.Key.TextType, XScoreTextType, () => Overlayer.Overlay.Instance?.UpdateAccuracy());
+                XScorePotentialType = EnumSel(Tr.Key.TextType, XScorePotentialType, () =>
+                {
+                    var o = Overlayer.Overlay.Instance;
+                    if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
+                });
+                if (ShowXScore != prevXs) { var o = Overlayer.Overlay.Instance; o?.SetupLocationMain(); }
+            }
         });
 
         DrawDisplaySub("time", Tr.Get(Tr.Key.TimeSection), () =>
@@ -296,8 +347,13 @@ public class Settings
         {
             ShowCheckpoint = Tog(Tr.Get(Tr.Key.ShowCheckpoint), ShowCheckpoint);
             ShowBest = Tog(Tr.Get(Tr.Key.ShowBest), ShowBest);
-            if (ShowBest) Colors.Best.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateProgress()), Tr.Get(Tr.Key.BestColor),
-                () => { Colors.Best = new([(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]); Colors.Save(); });
+            if (ShowBest)
+            {
+                Colors.Best.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateProgress()), Tr.Get(Tr.Key.BestColor),
+                    () => { Colors.Best = new([(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]); Colors.Save(); });
+                BestDecimal = DecSlide("bestDec", Tr.Key.DecimalPrecision, BestDecimal, 4,
+                    () => Overlayer.Overlay.Instance?.OverlayTextManager?.UpdateBest(Overlayer.Overlay.Instance));
+            }
 
             ShowProgressBar = Tog(Tr.Get(Tr.Key.ShowProgressBar), ShowProgressBar);
             if (ShowProgressBar)
@@ -402,8 +458,18 @@ public class Settings
             if (ShowStart) DrawJColorFoldout("jStart", Tr.Get(Tr.Key.StartColor), Colors.JStart,
                 () => { Colors.JStart = new(Color.white); Colors.Save(); });
             ShowTiming = TogR(Tr.Key.ShowTiming, ShowTiming);
-            if (ShowTiming) Colors.JTiming.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateTime()), Tr.Get(Tr.Key.TimingColor),
-                () => { Colors.JTiming = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
+            if (ShowTiming)
+            {
+                Colors.JTiming.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateTime()), Tr.Get(Tr.Key.TimingColor),
+                    () => { Colors.JTiming = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
+                TimingDecimal = DecSlide("timingDec", Tr.Key.DecimalPrecision, TimingDecimal, 5,
+                    () => Overlay.Instance?.Jongyeol?.RefreshTiming());
+                TimingTextType = EnumSel(Tr.Key.TextType, TimingTextType, () =>
+                {
+                    var o = Overlay.Instance;
+                    if (o != null) { o.SetupLocationMain(); o.Jongyeol?.RefreshTiming(); }
+                });
+            }
             GUILayout.BeginHorizontal();
             GUILayout.Label(Tr.Get(Tr.Key.DecimalPrecision), GUILayout.Width(120));
             JongyeolDecimalPrecision = (int)GUILayout.HorizontalSlider(JongyeolDecimalPrecision, 0, 5);
@@ -420,9 +486,7 @@ public class Settings
                 _slideFields["DecimalPrecision"] = JongyeolDecimalPrecision.ToString();
             GUILayout.EndHorizontal();
             var o = Overlay.Instance;
-            // 小数精度统一作用于所有文本（默认 2 位 = 原普通模式观感，滑条即改）
-            if (o?.OverlayTextManager is OverlayTextManagerNormal n) n.DecimalPrecision = JongyeolDecimalPrecision;
-            else if (o?.OverlayTextManager is OverlayTextManagerCoop c) c.DecimalPrecision = JongyeolDecimalPrecision;
+            // 全局小数位滑条现只管扩展文本（FPS/开始进度等）；主文本各有独立小数位
             if (o?.Jongyeol != null) o.Jongyeol.DecimalPrecision = JongyeolDecimalPrecision;
         });
 
@@ -553,7 +617,7 @@ public class Settings
         }
     }
 
-    static int[] GetDefaultJongyeolOrder() => [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15];
+    static int[] GetDefaultJongyeolOrder() => [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
     static string GetElementName(DisplayElement elem) => elem switch
     {
@@ -573,12 +637,17 @@ public class Settings
         DisplayElement.Death => Tr.Get(Tr.Key.ElemDeath),
         DisplayElement.Start => Tr.Get(Tr.Key.ElemStart),
         DisplayElement.Timing => Tr.Get(Tr.Key.ElemTiming),
+        DisplayElement.AvgTiming => Tr.Get(Tr.Key.ElemAvgTiming),
+        DisplayElement.XScore => Tr.Get(Tr.Key.ElemXScore),
+        DisplayElement.PotentialAccuracy => Tr.Get(Tr.Key.ElemPAcc),
+        DisplayElement.PotentialXAccuracy => Tr.Get(Tr.Key.ElemPXAcc),
+        DisplayElement.PotentialXScore => Tr.Get(Tr.Key.ElemPXScore),
         _ => elem.ToString()
     };
 
     static bool IsValidJongyeolElement(int id) => id switch
     {
-        >= 10 and <= 15 => true,  // FPS..Timing
+        >= 10 and <= 20 => true,  // FPS..PotentialXScore
         >= 0 and <= 6 => true,    // Progress..Best
         _ => false,
     };
@@ -795,6 +864,44 @@ public class Settings
         v = GUILayout.Toggle(v, label, GUILayout.ExpandWidth(true));
         GUILayout.EndHorizontal();
         return v;
+    }
+
+    /// <summary>枚举选择器：点击循环切换到下一个值。</summary>
+    static T EnumSel<T>(Tr.Key key, T value, Action onChange = null) where T : struct, Enum
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Label(Tr.Get(key), GUILayout.Width(140));
+        if (GUILayout.Button(value.ToString(), GUILayout.Width(180)))
+        {
+            var vals = (T[])Enum.GetValues(typeof(T));
+            int i = Array.IndexOf(vals, value);
+            value = vals[(i + 1) % vals.Length];
+            onChange?.Invoke();
+        }
+        GUILayout.EndHorizontal();
+        return value;
+    }
+
+    /// <summary>0..max 的整数小数位滑条（带可编辑文本框）。</summary>
+    int DecSlide(string fieldKey, Tr.Key labelKey, int value, int max, Action onChange)
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Label(Tr.Get(labelKey), GUILayout.Width(140));
+        int nv = (int)GUILayout.HorizontalSlider(value, 0, max);
+        if (!_slideFields.TryGetValue(fieldKey, out var text))
+            _slideFields[fieldKey] = text = value.ToString();
+        string newText = GUILayout.TextField(text, GUILayout.Width(55));
+        if (newText != text)
+        {
+            _slideFields[fieldKey] = newText;
+            if (int.TryParse(newText, out int parsed))
+                nv = Mathf.Clamp(parsed, 0, max);
+        }
+        else if (value.ToString() != text)
+            _slideFields[fieldKey] = value.ToString();
+        GUILayout.EndHorizontal();
+        if (nv != value) onChange?.Invoke();
+        return nv;
     }
 
     static float Slide(string label, float v, float min, float max, Action onChange)

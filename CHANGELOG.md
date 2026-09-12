@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Timing display modes** (from JipperResourcePack V1.5): `Timing / AvgTiming / Both / BothInOneLine` — the average can now sit on its own stack line (`AvgTiming` element), and the per-text decimal slider (0-5) replaces the shared precision for the Timing text
+- **XScore text** (r149+ only): the game's native XPerfect score (X=2, Perfect±=1) computed from `hitMarginsCount`, shown as a plain value, `x/max`, or `x (MAX-n)` — with a potential variant; `Midspin` hits are excluded from the judged-tile count, matching the game's scoring. Disabled on r148 where the game tracks no XScore
+- **Potential values** for Accuracy / XAccuracy / XScore (from JRP V1.5, math verified against the r150 `CalculatePercentAcc` source): "what the final value becomes if everything remaining is perfected". Accuracy potential reverse-engineers the game's effective denominator (the native formula lets acc exceed 100% — every Perfect adds +0.01%); XAccuracy potential mirrors the game's own `maxPossibleXAcc`. Modes: Current / Potential / Both / Both-in-one-line, with dedicated stack elements for the separate-line modes (single-player; coop renders inline per player)
+- **Per-text decimal places**: Progress / Accuracy / XAccuracy / Best / Timing each get their own 0-4 (0-5 for Timing) slider in their settings section; the old global slider now only governs the extension texts (FPS, Start)
+- **Timing auto-hit filtering**: autoplay, per-player auto and auto-floor hits no longer enter the timing statistics — on r149+ those hits carry the ideal timestamp (≈0 ms) and were dragging the average toward zero
+
+### Bug Fixes
+
+- (none yet)
+
 ## v1.1.5 — 2026.09.12
 
 ### Features

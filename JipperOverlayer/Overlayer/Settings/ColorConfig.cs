@@ -12,6 +12,7 @@ public class ColorConfig
     public ColorPerDictionary XAccuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0));
     public ColorPerDictionary MusicTime = new([(1f, Color.white)]);
     public ColorPerDictionary MapTime = new([(1f, Color.white)]);
+    public ColorPerDictionary XScore = new([(0.98f, Color.white), (1f, Color.white)], new Color(1, 0.8549f, 0));
     public ColorPerDictionary Best = new([(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]);
     public ColorPerDictionary Bpm = new([(0f, Color.white), (1f, Color.magenta)]);
     public ColorPerDictionary Combo = new([(0f, new Color(0.8745f, 0.7098f, 1f)), (1f, new Color(0.7176f, 0.3490f, 1f))]);
@@ -47,7 +48,7 @@ public class ColorConfig
     private static readonly Color SettingsGold = new(1, 0.8549f, 0);
     public void EnsureSorted() {
         Progress.EnsureSorted(); Accuracy.EnsureSorted(); XAccuracy.EnsureSorted();
-        MusicTime.EnsureSorted(); MapTime.EnsureSorted(); Best.EnsureSorted();
+        MusicTime.EnsureSorted(); MapTime.EnsureSorted(); Best.EnsureSorted(); XScore.EnsureSorted();
         Bpm.EnsureSorted(); Combo.EnsureSorted(); ProgressBar.EnsureSorted();
         ProgressBarBackground.EnsureSorted(); ProgressBarBorder.EnsureSorted();
         JCombo.EnsureSorted(); JDeath.EnsureSorted(); JTiming.EnsureSorted();

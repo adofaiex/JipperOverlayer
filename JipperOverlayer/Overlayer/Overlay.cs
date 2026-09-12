@@ -127,9 +127,7 @@ public class Overlay
         OverlayTextManager = VersionSafe.IsCoopMode()
             ? new OverlayTextManagerCoop(this)
             : new OverlayTextManagerNormal();
-        // 小数精度统一作用于所有文本（默认 2 位与原普通模式一致）
-        if (OverlayTextManager is OverlayTextManagerNormal normal) normal.DecimalPrecision = s.JongyeolDecimalPrecision;
-        else if (OverlayTextManager is OverlayTextManagerCoop coop) coop.DecimalPrecision = s.JongyeolDecimalPrecision;
+        // 全局小数位仅作用于扩展文本（FPS/开始进度）；主文本各有独立小数位设置
         Jongyeol.DecimalPrecision = s.JongyeolDecimalPrecision;
     }
 

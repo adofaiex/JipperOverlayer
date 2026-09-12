@@ -359,3 +359,88 @@ internal static class GameCompat
         }
     }
 }
+
+/// <summary>
+/// 精度/XScore 相关的计算（借鉴 JipperResourcePack V1.5，公式已对照 r150 游戏源码验证）。
+///
+/// 游戏原生精度公式（scrMarginTracker.CalculatePercentAcc，r150）：
+///   acc = (Perfect + Early/LatePerfect) / 总判定数 + Perfect×0.0001 − FailedFloor×0.0001
+/// 即每个完美 +0.01%，acc 可以超过 100%；FailedFloor 每个再扣 0.01%。
+/// 「潜力值」= 剩余格子全部满分时最终能达到的值。
+/// </summary>
+internal static class AccuracyMath
+{
+    /// <summary>XPerfect 的分值（r149+ 原生 HitMarginXScores：X=2、Perfect±=1）。</summary>
+    public const int XPerfectValue = 2;
+
+    /// <summary>r149+：Midspin 不算已判定格（JRP 的 GetJudgedTiles 语义）。</summary>
+    public static int GetJudgedTiles(int[] hits, int seqID)
+        => HitMarginCompat.HasNativeXPerfect ? seqID - HitMarginCompat.Get(hits, HitMarginCompat.Midspin) : seqID;
+
+    /// <summary>剩余未判定格数（终点格不算）。</summary>
+    public static int GetRemainingTiles(int seqID)
+    {
+        var floors = GameRefs.LevelMaker?.listFloors;
+        if (floors == null || floors.Count == 0) return 0;
+        int remaining = floors.Count - 1 - seqID;
+        return remaining > 0 ? remaining : 0;
+    }
+
+    /// <summary>从判定计数取「完美组」与「合格组」数量（合格 = 完美 + Early/LatePerfect）。
+    /// r148 无 XPerfect 拆分，且 Auto 在 R149 前也计分。</summary>
+    public static void GetAccuracyCounts(int[] hits, out int perfect, out int accurate)
+    {
+        if (HitMarginCompat.HasNativeXPerfect)
+        {
+            perfect = HitMarginCompat.Get(hits, HitMarginCompat.PerfectMinus)
+                    + HitMarginCompat.Get(hits, HitMarginCompat.XPerfect)
+                    + HitMarginCompat.Get(hits, HitMarginCompat.PerfectPlus);
+            accurate = perfect
+                    + HitMarginCompat.Get(hits, HitMarginCompat.EarlyPerfect)
+                    + HitMarginCompat.Get(hits, HitMarginCompat.LatePerfect);
+        }
+        else
+        {
+            perfect = HitMarginCompat.Get(hits, HitMarginCompat.Perfect) + HitMarginCompat.Get(hits, HitMarginCompat.Auto);
+            accurate = perfect
+                    + HitMarginCompat.Get(hits, HitMarginCompat.EarlyPerfect)
+                    + HitMarginCompat.Get(hits, HitMarginCompat.LatePerfect);
+        }
+    }
+
+    /// <summary>潜力精度：剩余全完美时最终 acc。先用 acc 反解出游戏实际使用的分母，
+    /// 再按 (perfect+remaining)×0.0001 + (accurate+remaining)/total 外推。</summary>
+    public static float GetPotentialAccuracy(int[] hits, float acc, int judged, int remaining)
+    {
+        GetAccuracyCounts(hits, out int perfect, out int accurate);
+        float rate = acc - perfect * 0.0001f;
+        int count = accurate == 0 || rate <= 0 || float.IsNaN(rate) ? judged : (int)Math.Round(accurate / rate);
+        if (count < accurate) count = accurate;
+        int total = count + remaining;
+        return total == 0 ? 1 : (perfect + remaining) * 0.0001f + (float)(accurate + remaining) / total;
+    }
+
+    /// <summary>潜力 X 精度：剩余全部 XPerfect 时的收敛值（与游戏原生 maxPossibleXAcc 同构）。
+    /// 注：游戏对 XAcc 有检查点惩罚 ×0.9875^检查点数，此式与其原生 maxPossibleXAcc 一样未计入。</summary>
+    public static float GetPotentialXAccuracy(float xacc, int judged, int remaining)
+    {
+        int total = judged + remaining;
+        return total == 0 ? 1 : (xacc * judged + remaining) / total;
+    }
+
+    /// <summary>由判定计数计算 XScore（r149+ 语义：XPerfect=2、Perfect±=1）。</summary>
+    public static int GetXScore(int[] hits)
+        => HitMarginCompat.HasNativeXPerfect
+            ? XPerfectValue * HitMarginCompat.Get(hits, HitMarginCompat.XPerfect)
+              + HitMarginCompat.Get(hits, HitMarginCompat.PerfectMinus)
+              + HitMarginCompat.Get(hits, HitMarginCompat.PerfectPlus)
+            : 0;
+
+    /// <summary>XScore 文本（Value / x÷max / MAX−n）。</summary>
+    public static string GetXScoreText(int xScore, int maxXScore, XScoreTextType type) => type switch
+    {
+        XScoreTextType.WithMax => xScore + "/" + maxXScore,
+        XScoreTextType.MaxMinus => xScore + " (MAX-" + (maxXScore - xScore) + ")",
+        _ => xScore.ToString(),
+    };
+}

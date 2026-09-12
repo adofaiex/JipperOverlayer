@@ -18,5 +18,10 @@ public enum DisplayElement
     Death,
     Start,
     Timing,
+    AvgTiming,
+    XScore,
+    PotentialAccuracy,
+    PotentialXAccuracy,
+    PotentialXScore,
     Count
 }
