@@ -9,8 +9,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Reference Include="dnlib">
-      <HintPath>..\..\Libs\dnlib.dll</HintPath>
-    </Reference>
+    <!-- dnlib 走 NuGet：CI 的 Libs/ 来自 adofai-libs（不含 dnlib.dll），
+         HintPath 在那儿解析不到会直接 CS0246；本地 Libs 有副本但未入 git，不可依赖 -->
+    <PackageReference Include="dnlib" Version="4.4.0" />
   </ItemGroup>
 </Project>
