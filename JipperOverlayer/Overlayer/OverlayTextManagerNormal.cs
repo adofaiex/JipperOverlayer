@@ -55,7 +55,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             UpdateXScore(overlay, hits, judged, remaining);
     }
 
-    /// <summary>当前值/潜力值双文本渲染（借鉴 JRP SetDualText）：
+    /// <summary>当前值/潜力值双文本渲染：
     /// Current 只写主文本；Potential 只写潜力文本；Both 两行；BothInOneLine 主文本一行双值。</summary>
     static void SetDualText(PotentialTextType type, TMPro.TextMeshProUGUI text, TMPro.TextMeshProUGUI potentialText,
         string label, string value, string potentialValue, Action<TMPro.TextMeshProUGUI> colorCurrent, Action<TMPro.TextMeshProUGUI> colorPotential)
@@ -80,7 +80,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         int totalXScore = maxXScore + remaining * AccuracyMath.XPerfectValue;
         SetDualText(s.XScorePotentialType, overlay.Jongyeol?.XScoreText, overlay.Jongyeol?.PotentialXScoreText, "XScore",
             AccuracyMath.GetXScoreText(xScore, maxXScore, s.XScoreTextType),
-            AccuracyMath.GetXScoreText(potentialXScore, totalXScore, s.XScoreTextType),
+            AccuracyMath.GetXScoreText(potentialXScore, totalXScore, s.XScoreTextType, potential: true),
             t => t.color = s.Colors.XScore.GetColor(maxXScore == 0 ? 1 : (float)xScore / maxXScore),
             t => t.color = s.Colors.XScore.GetColor(totalXScore == 0 ? 1 : (float)potentialXScore / totalXScore));
     }

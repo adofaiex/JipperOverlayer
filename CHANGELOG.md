@@ -4,17 +4,22 @@
 
 ### Features
 
-- **Timing display modes** (from JipperResourcePack V1.5): `Timing / AvgTiming / Both / BothInOneLine` — the average can now sit on its own stack line (`AvgTiming` element), and the per-text decimal slider (0-5) replaces the shared precision for the Timing text
+- **Timing display modes**: `Timing / AvgTiming / Both / BothInOneLine` — the average can now sit on its own stack line (`AvgTiming` element), and the per-text decimal slider (0-5) replaces the shared precision for the Timing text
 - **XScore text** (r149+ only): the game's native XPerfect score (X=2, Perfect±=1) computed from `hitMarginsCount`, shown as a plain value, `x/max`, or `x (MAX-n)` — with a potential variant; `Midspin` hits are excluded from the judged-tile count, matching the game's scoring. Disabled on r148 where the game tracks no XScore
-- **Potential values** for Accuracy / XAccuracy / XScore (from JRP V1.5, math verified against the r150 `CalculatePercentAcc` source): "what the final value becomes if everything remaining is perfected". Accuracy potential reverse-engineers the game's effective denominator (the native formula lets acc exceed 100% — every Perfect adds +0.01%); XAccuracy potential mirrors the game's own `maxPossibleXAcc`. Modes: Current / Potential / Both / Both-in-one-line, with dedicated stack elements for the separate-line modes (single-player; coop renders inline per player)
+- **Potential values** for Accuracy / XAccuracy / XScore (math verified against the r150 `CalculatePercentAcc` source): "what the final value becomes if everything remaining is perfected". Accuracy potential reverse-engineers the game's effective denominator (the native formula lets acc exceed 100% — every Perfect adds +0.01%); XAccuracy potential mirrors the game's own `maxPossibleXAcc`. Modes: Current / Potential / Both / Both-in-one-line, with dedicated stack elements for the separate-line modes (single-player; coop renders inline per player)
 - **Per-text decimal places**: Progress / Accuracy / XAccuracy / Best / Timing each get their own 0-4 (0-5 for Timing) slider in their settings section; the old global slider now only governs the extension texts (FPS, Start)
 - **Timing auto-hit filtering**: autoplay, per-player auto and auto-floor hits no longer enter the timing statistics — on r149+ those hits carry the ideal timestamp (≈0 ms) and were dragging the average toward zero
+- **Settings now declare what each text type means**: every mode selector got a distinct label (分数格式 / 潜力值显示 / 显示模式 — formerly four selectors all named「文本类型」), the cycle buttons show localized value names with meaning (仅当前值 / 仅潜力值 / 当前+潜力（两行）/ 当前 (潜力) 一行; 纯分数 / 分数 / 满分 / 分数 (MAX-n)…) instead of raw English enum names, and a dimmed one-line hint under each selector defines the concept — potential value, XScore scoring (X=2 / Perfect±=1, r149+ only), hit offset vs. average, and the coop inline merge — in all three languages
 
 ### Bug Fixes
 
 - **XScore / 潜力值文本始终不显示**：`JongyeolDisplayOrder` 的字段初始值仍只到上一次新增元素为止（`10..15`），而 `Settings.Load` 只在数组为 null 或空时才回退到 `GetDefaultJongyeolOrder()` —— 于是五个新元素（`AvgTiming`/`XScore`/`P.Accuracy`/`P.XAccuracy`/`P.XScore`）从未被布局遍历到，新装与老配置都中招。默认数组已补全，`Load` 还会把保存的顺序里缺失的默认元素追加到末尾，已有 `Settings.json` 也会被修好
 - **只开 XScore 时整块不可见**：主容器 `SetActive` 与 `Show` 的布局门控漏了 `ShowXScore`，关掉进度、只留 XScore 会让整条栈隐藏；两处改用新增的 `Settings.AnyStackedTextVisible`
 - **关掉精度/X精度后 XScore 不更新**：精度补丁（`ScrMistakesCalcAccPatch` / `ScrMarginCalcAccPatch`）与逐格补丁只按 `ShowAccuracy || ShowXAccuracy` 注册，两者都关时 XScore 冻结在初始空串；`ShowXScore` 现已并入这些注册门控
+- **「仅潜力值」模式下主文本行残留（冻结旧值）**：`SetDualText` 在 Potential 模式只写 `P.*` 文本、永不写主文本，但 `IsJongyeolElementEnabled` 的主元素门控不看 `*TextType` —— 主文本行继续占着栈位，且游戏中途从当前值切到仅潜力值后主文本永远停在切换前的旧值。主行现随模式隐藏（coop 例外：潜力值内联进主文本，主行恒显）
+- **coop 潜力 X 精度分母错用 `seqID`**：`SetXAccuracy` 直接把 `seqID` 当已判定格数外推，未经 `GetJudgedTiles` 扣除 Midspin（r149+），含 Midspin 的图里潜力 X 精度有偏差；现与单人路径一致
+- **XScore 满分途中显示 `MAX--2`（结算才恢复）**：游戏源码 `scrPlanet.cs` 里 `AddHit`（我们的更新在其内部的 `CalculatePercentAcc` 后缀触发，`hitMarginsCount` 已含本次）先于 `MoveToNextFloor` 更新 `currentSeqID`——打击瞬间 `seqID` 恒落后一格，`judged = seqID − midspin` 少算一格，满分会显示负的 MAX 差值，直到通关时序落定才变回 `MAX-0`。`GetJudgedTiles` 改为对 `hitMarginsCount` 求和（与 XScore 同一瞬间读取、天然自洽），不再依赖 `seqID`；检查点重试时游戏清零并重放存档判定，求和式随之保持一致
+- **XScore 的 `(MAX-n)` 两处冗余省略**：n == 0（未掉分）时不再显示 `(MAX-0)`；潜力值的 MAX−n 恒等于当前值的（两者都 = maxXScore − xScore，潜力只是两边同加 2×剩余格），不再重复展示——一行双值从 `0 (MAX-0)(1022 (MAX-0))` 变为 `0 (1022)`
 
 ### Refactor
 

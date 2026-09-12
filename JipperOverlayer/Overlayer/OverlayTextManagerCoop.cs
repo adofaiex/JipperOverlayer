@@ -134,7 +134,11 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         if (s.XAccuracyTextType != PotentialTextType.Current)
         {
             int seqID = GameRefs.CurrentSeqID;
-            float potential = AccuracyMath.GetPotentialXAccuracy(xacc, seqID, AccuracyMath.GetRemainingTiles(seqID));
+            // 与单人路径一致：已判定数必须经 GetJudgedTiles 扣除 Midspin（r149+）。
+            // 原实现直接拿 seqID 当已判定数，含 Midspin 的图里潜力 X 精度会偏。
+            int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
+            float potential = AccuracyMath.GetPotentialXAccuracy(xacc,
+                AccuracyMath.GetJudgedTiles(hits, seqID), AccuracyMath.GetRemainingTiles(seqID));
             string p = Math.Round(potential * 100, s.XAccuracyDecimal) + "%";
             if (s.XAccuracyTextType == PotentialTextType.Potential) current = p;
             else current += $" ({p})";
@@ -155,7 +159,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         if (s.XScorePotentialType != PotentialTextType.Current)
         {
             string p = AccuracyMath.GetXScoreText(xScore + remaining * AccuracyMath.XPerfectValue,
-                maxXScore + remaining * AccuracyMath.XPerfectValue, s.XScoreTextType);
+                maxXScore + remaining * AccuracyMath.XPerfectValue, s.XScoreTextType, potential: true);
             if (s.XScorePotentialType == PotentialTextType.Potential) current = p;
             else current += $" ({p})";
         }

@@ -361,7 +361,7 @@ internal static class GameCompat
 }
 
 /// <summary>
-/// 精度/XScore 相关的计算（借鉴 JipperResourcePack V1.5，公式已对照 r150 游戏源码验证）。
+/// 精度/XScore 相关的计算（公式对照 r150 游戏源码推导）。
 ///
 /// 游戏原生精度公式（scrMarginTracker.CalculatePercentAcc，r150）：
 ///   acc = (Perfect + Early/LatePerfect) / 总判定数 + Perfect×0.0001 − FailedFloor×0.0001
@@ -373,9 +373,22 @@ internal static class AccuracyMath
     /// <summary>XPerfect 的分值（r149+ 原生 HitMarginXScores：X=2、Perfect±=1）。</summary>
     public const int XPerfectValue = 2;
 
-    /// <summary>r149+：Midspin 不算已判定格（JRP 的 GetJudgedTiles 语义）。</summary>
+    /// <summary>r149+：Midspin 不算已判定格。
+    /// 必须从 hits 自身求和而不是用 seqID：AddHit（我们的更新在此触发）先于
+    /// MoveToNextFloor 更新 currentSeqID（scrPlanet.cs 785→930→1102），打击瞬间
+    /// seqID 恒落后一格，用 seqID 会把满分算成 MAX--2，直到结算才恢复。
+    /// 检查点重试时游戏清零 hitMarginsCount，此式也随之归零，与原生 acc 重开一致。</summary>
     public static int GetJudgedTiles(int[] hits, int seqID)
-        => HitMarginCompat.HasNativeXPerfect ? seqID - HitMarginCompat.Get(hits, HitMarginCompat.Midspin) : seqID;
+        => HitMarginCompat.HasNativeXPerfect
+            ? SumHits(hits) - HitMarginCompat.Get(hits, HitMarginCompat.Midspin)
+            : SumHits(hits);
+
+    static int SumHits(int[] hits)
+    {
+        int sum = 0;
+        for (int i = 0; i < hits.Length; i++) sum += hits[i];
+        return sum;
+    }
 
     /// <summary>剩余未判定格数（终点格不算）。</summary>
     public static int GetRemainingTiles(int seqID)
@@ -436,11 +449,14 @@ internal static class AccuracyMath
               + HitMarginCompat.Get(hits, HitMarginCompat.PerfectPlus)
             : 0;
 
-    /// <summary>XScore 文本（Value / x÷max / MAX−n）。</summary>
-    public static string GetXScoreText(int xScore, int maxXScore, XScoreTextType type) => type switch
+    /// <summary>XScore 文本（Value / x÷max / x (MAX-n)）。
+    /// 两处省略：n == 0（未掉分）时 (MAX-0) 没有信息量；潜力值的 MAX−n 恒等于
+    /// 当前值的（两者都 = maxXScore − xScore，潜力只是两边同加 2×剩余格），
+    /// potential:=true 时 MaxMinus 退化为纯数值，重复展示没有意义。</summary>
+    public static string GetXScoreText(int xScore, int maxXScore, XScoreTextType type, bool potential = false) => type switch
     {
         XScoreTextType.WithMax => xScore + "/" + maxXScore,
-        XScoreTextType.MaxMinus => xScore + " (MAX-" + (maxXScore - xScore) + ")",
+        XScoreTextType.MaxMinus => !potential && maxXScore > xScore ? xScore + " (MAX-" + (maxXScore - xScore) + ")" : xScore.ToString(),
         _ => xScore.ToString(),
     };
 }

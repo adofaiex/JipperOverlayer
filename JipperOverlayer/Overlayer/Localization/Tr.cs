@@ -48,6 +48,11 @@ public static class Tr
         DetailedProgress, TimeDecimals,
         ShowXScore, XScoreColor, TextType,
         ElemAvgTiming, ElemXScore, ElemPAcc, ElemPXAcc, ElemPXScore,
+        ScoreFormat, PotentialDisplay, TimingDisplay,
+        PotCur, PotPot, PotBoth, PotBothOne,
+        XfmtValue, XfmtWithMax, XfmtMaxMinus,
+        TmHit, TmAvg, TmBoth, TmBothOne,
+        HelpPotential, HelpXScore, HelpTimingMode,
         Count
     }
 
@@ -92,7 +97,14 @@ public static class Tr
             "Outline", "Outline Color", "Outline Width", "Outline Softness",
             "Detailed Progress (cur / total)", "Time With Decimals",
             "Show XScore", "XScore Color", "Text Type",
-            "Avg Timing", "XScore", "P.Accuracy", "P.XAccuracy", "P.XScore" ],
+            "Avg Timing", "XScore", "P.Accuracy", "P.XAccuracy", "P.XScore",
+            "Score Format", "Potential Display", "Display Mode",
+            "Current only", "Potential only", "Current + Potential (2 lines)", "Current (Potential) one line",
+            "Value", "value / max", "value (MAX-n)",
+            "Hit offset", "Average", "Offset + Avg (2 lines)", "Offset (Avg) one line",
+            "Potential = the final value if every remaining tile gets the top judgement. In coop, both values merge into one line.",
+            "Each judged tile: XPerfect = 2 pts, Perfect+/- = 1 pt (game r149+ only).",
+            "Hit offset = the latest hit's ms offset; Average = the mean of all hits." ],
 
         /* 1  Korean */ [ "크기", "진행도 표시", "정확도 표시", "X정확도 표시",
             "음악 시간 표시", "맵 시간 표시", "음악 없을 때 맵 시간",
@@ -133,7 +145,14 @@ public static class Tr
             "아웃라인", "아웃라인 색상", "아웃라인 두께", "아웃라인 부드러움",
             "상세 진행도 (현재 / 전체)", "시간 소수점 표시",
             "XScore 표시", "XScore 색상", "텍스트 타입",
-            "평균 타이밍", "XScore", "P.정확도", "P.X정확도", "P.XScore" ],
+            "평균 타이밍", "XScore", "P.정확도", "P.X정확도", "P.XScore",
+            "점수 형식", "잠재값 표시", "표시 모드",
+            "현재값만", "잠재값만", "현재+잠재값 (2줄)", "현재값 (잠재값) 한 줄",
+            "점수", "점수 / 만점", "점수 (MAX-n)",
+            "타격 오프셋", "평균", "오프셋+평균 (2줄)", "오프셋 (평균) 한 줄",
+            "잠재값 = 남은 칸을 모두 최고 판정으로 맞췄을 때의 최종 값. 협동에서는 두 값이 한 줄로 병합됩니다.",
+            "판정 칸당 XPerfect = 2점, Perfect+/- = 1점 (게임 r149+ 전용).",
+            "타격 오프셋 = 직전 타격의 ms 오프셋, 평균 = 전체 타격의 평균." ],
 
         /* 2  Chinese */ [ "大小", "显示进度", "显示准确率", "显示X准确率",
             "显示音乐时间", "显示地图时间", "无音乐时显示地图时间",
@@ -174,7 +193,14 @@ public static class Tr
             "描边", "描边颜色", "描边宽度", "描边柔和度",
             "详细进度（当前 / 总数）", "时间显示小数",
             "显示XScore", "XScore颜色", "文本类型",
-            "平均时机", "XScore", "P.准确率", "P.X准确率", "P.XScore" ],
+            "平均时机", "XScore", "P.准确率", "P.X准确率", "P.XScore",
+            "分数格式", "潜力值显示", "显示模式",
+            "仅当前值", "仅潜力值", "当前+潜力（两行）", "当前 (潜力) 一行",
+            "纯分数", "分数 / 满分", "分数 (MAX-n)",
+            "单次偏移", "平均值", "偏移+平均（两行）", "偏移 (平均) 一行",
+            "潜力值 = 剩余格全部最高判定时的最终值；合作模式中两个值合并为一行显示",
+            "每判定格 XPerfect=2 分、Perfect+/-=1 分（仅游戏 r149+）",
+            "单次偏移 = 最近一次打击的毫秒偏移；平均值 = 全部打击的平均偏移" ],
     ];
 
     public static string Get(Key key)

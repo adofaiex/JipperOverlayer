@@ -1,6 +1,8 @@
 namespace JipperOverlayer.Overlayer;
 
-/// <summary>Timing 文本的显示模式（借鉴 JipperResourcePack V1.5）。</summary>
+using JipperOverlayer.Overlayer.Localization;
+
+/// <summary>Timing 文本的显示模式。</summary>
 public enum TimingTextType
 {
     /// <summary>只显示最近一次打击的毫秒偏移</summary>
@@ -35,4 +37,33 @@ public enum PotentialTextType
     Both,
     /// <summary>一行双值：当前 (潜力)</summary>
     BothInOneLine,
+}
+
+/// <summary>设置界面里各文本类型枚举的本地化显示名。
+/// 原先按钮循环显示的是英文原始枚举名（Current/Both/WithMax...），
+/// 用户无从知道每个值是什么意思——这里统一换成带含义的本地化名称。</summary>
+public static class TextTypeNames
+{
+    public static string Name(PotentialTextType t) => t switch
+    {
+        PotentialTextType.Current => Tr.Get(Tr.Key.PotCur),
+        PotentialTextType.Potential => Tr.Get(Tr.Key.PotPot),
+        PotentialTextType.Both => Tr.Get(Tr.Key.PotBoth),
+        _ => Tr.Get(Tr.Key.PotBothOne),
+    };
+
+    public static string Name(XScoreTextType t) => t switch
+    {
+        XScoreTextType.WithMax => Tr.Get(Tr.Key.XfmtWithMax),
+        XScoreTextType.MaxMinus => Tr.Get(Tr.Key.XfmtMaxMinus),
+        _ => Tr.Get(Tr.Key.XfmtValue),
+    };
+
+    public static string Name(TimingTextType t) => t switch
+    {
+        TimingTextType.AvgTiming => Tr.Get(Tr.Key.TmAvg),
+        TimingTextType.Both => Tr.Get(Tr.Key.TmBoth),
+        TimingTextType.BothInOneLine => Tr.Get(Tr.Key.TmBothOne),
+        _ => Tr.Get(Tr.Key.TmHit),
+    };
 }

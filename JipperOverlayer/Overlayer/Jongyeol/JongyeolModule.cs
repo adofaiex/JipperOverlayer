@@ -16,7 +16,7 @@ public class JongyeolModule
     private readonly Overlay _overlay;
 
     public TextMeshProUGUI FPSText, AuthorText, StateText, DeathText, StartText, TimingText;
-    // V1.1.6 新增：Timing 平均行、XScore、三个潜力值文本（借鉴 JipperResourcePack）
+    // V1.1.6 新增：Timing 平均行、XScore、三个潜力值文本
     public TextMeshProUGUI AvgTimingText, XScoreText, PotentialAccuracyText, PotentialXAccuracyText, PotentialXScoreText;
     public readonly List<TextMeshProUGUI> ExtraTexts = new();
 
@@ -126,8 +126,12 @@ public class JongyeolModule
         {
             DisplayElement.FPS => s.ShowFPS,
             DisplayElement.Progress => s.ShowProgress,
-            DisplayElement.Accuracy => checkAuto && s.ShowAccuracy,
-            DisplayElement.XAccuracy => checkAuto && s.ShowXAccuracy,
+            // 「仅潜力值」模式下 SetDualText 永不写主文本：主行必须隐藏，否则占着栈位
+            // 且冻结在切换前的旧值。coop 例外——潜力值内联进主文本，主行永远要显示。
+            DisplayElement.Accuracy => checkAuto && s.ShowAccuracy
+                && (VersionSafe.IsCoopMode() || s.AccuracyTextType != PotentialTextType.Potential),
+            DisplayElement.XAccuracy => checkAuto && s.ShowXAccuracy
+                && (VersionSafe.IsCoopMode() || s.XAccuracyTextType != PotentialTextType.Potential),
             DisplayElement.MusicTime => s.ShowMusicTime,
             DisplayElement.MapTime => s.ShowMapTime,
             DisplayElement.Best => checkAuto && s.ShowBest,
@@ -136,7 +140,8 @@ public class JongyeolModule
             // AvgTiming 行仅在 Both 模式（两行分开）时有意义
             DisplayElement.AvgTiming => checkAuto && s.ShowTiming && s.TimingTextType == TimingTextType.Both,
             // XScore 与潜力值文本的可见性跟随所属功能与其文本类型
-            DisplayElement.XScore => checkAuto && s.ShowXScore && HitMarginCompat.HasNativeXPerfect,
+            DisplayElement.XScore => checkAuto && s.ShowXScore && HitMarginCompat.HasNativeXPerfect
+                && (VersionSafe.IsCoopMode() || s.XScorePotentialType != PotentialTextType.Potential),
             // 潜力值独立文本仅单人模式（coop 为合并文本，内联显示潜力值）
             DisplayElement.PotentialAccuracy => checkAuto && !VersionSafe.IsCoopMode() && s.ShowAccuracy && s.AccuracyTextType is PotentialTextType.Potential or PotentialTextType.Both,
             DisplayElement.PotentialXAccuracy => checkAuto && !VersionSafe.IsCoopMode() && s.ShowXAccuracy && s.XAccuracyTextType is PotentialTextType.Potential or PotentialTextType.Both,
@@ -215,7 +220,7 @@ public class JongyeolModule
     {
         var s = Main.Settings;
         if (!s.ShowTiming || !_overlay.GameObject.activeSelf) return;
-        // 自动打击过滤（借鉴 JRP IsTimingAvailable）：自动播放/自动地板的命中使用理想时间戳
+        // 自动打击过滤：自动播放/自动地板的命中使用理想时间戳
         // （≈0ms 假样本），混入统计会把平均值拉向 0
         if (GameRefs.IsAuto) return;
         if (GameRefs.CurrentFloor?.nextfloor is { auto: true }) return;

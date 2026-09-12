@@ -32,7 +32,7 @@ public class Settings
     //   TimeDecimals     —— 音乐/地图时间带一位小数
     public bool DetailedProgress, TimeDecimals;
 
-    // ==== 文本类型与 XScore（借鉴 JipperResourcePack V1.5）====
+    // ==== 文本类型与 XScore ====
     public TimingTextType TimingTextType = TimingTextType.BothInOneLine;
     public XScoreTextType XScoreTextType = XScoreTextType.MaxMinus;
     public PotentialTextType AccuracyTextType = PotentialTextType.Current;
@@ -287,11 +287,12 @@ public class Settings
                     () => { Colors.Accuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
                 AccuracyDecimal = DecSlide("accDec", Tr.Key.DecimalPrecision, AccuracyDecimal, 4,
                     () => Overlayer.Overlay.Instance?.UpdateAccuracy());
-                AccuracyTextType = EnumSel(Tr.Key.TextType, AccuracyTextType, () =>
+                AccuracyTextType = EnumSel(Tr.Key.PotentialDisplay, AccuracyTextType, TextTypeNames.Name, () =>
                 {
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
                 });
+                HelpLabel(Tr.Get(Tr.Key.HelpPotential));
             }
 
             ShowXAccuracy = Tog(Tr.Get(Tr.Key.ShowXAccuracy), ShowXAccuracy);
@@ -301,11 +302,12 @@ public class Settings
                     () => { Colors.XAccuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
                 XAccuracyDecimal = DecSlide("xaccDec", Tr.Key.DecimalPrecision, XAccuracyDecimal, 4,
                     () => Overlayer.Overlay.Instance?.UpdateAccuracy());
-                XAccuracyTextType = EnumSel(Tr.Key.TextType, XAccuracyTextType, () =>
+                XAccuracyTextType = EnumSel(Tr.Key.PotentialDisplay, XAccuracyTextType, TextTypeNames.Name, () =>
                 {
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
                 });
+                HelpLabel(Tr.Get(Tr.Key.HelpPotential));
             }
 
             // XScore 文本：仅 r149+（游戏原生 XPerfect 计分），r148 无此数据
@@ -318,12 +320,15 @@ public class Settings
             {
                 Colors.XScore.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.XScoreColor),
                     () => { Colors.XScore = new([(0.98f, Color.white), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
-                XScoreTextType = EnumSel(Tr.Key.TextType, XScoreTextType, () => Overlayer.Overlay.Instance?.UpdateAccuracy());
-                XScorePotentialType = EnumSel(Tr.Key.TextType, XScorePotentialType, () =>
+                HelpLabel(Tr.Get(Tr.Key.HelpXScore));
+                // 两个选择器各管一件事：分数格式管数字怎么写，潜力值显示管当前/潜力怎么排
+                XScoreTextType = EnumSel(Tr.Key.ScoreFormat, XScoreTextType, TextTypeNames.Name, () => Overlayer.Overlay.Instance?.UpdateAccuracy());
+                XScorePotentialType = EnumSel(Tr.Key.PotentialDisplay, XScorePotentialType, TextTypeNames.Name, () =>
                 {
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
                 });
+                HelpLabel(Tr.Get(Tr.Key.HelpPotential));
                 // 切换开关会改变主容器/栈的可见性，必须走完整刷新（RefreshVisibility 内含 SetupLocationMain）
                 if (ShowXScore != prevXs) Overlayer.Overlay.Instance?.RefreshVisibility();
             }
@@ -471,11 +476,12 @@ public class Settings
                     () => { Colors.JTiming = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
                 TimingDecimal = DecSlide("timingDec", Tr.Key.DecimalPrecision, TimingDecimal, 5,
                     () => Overlay.Instance?.Jongyeol?.RefreshTiming());
-                TimingTextType = EnumSel(Tr.Key.TextType, TimingTextType, () =>
+                TimingTextType = EnumSel(Tr.Key.TimingDisplay, TimingTextType, TextTypeNames.Name, () =>
                 {
                     var o = Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.Jongyeol?.RefreshTiming(); }
                 });
+                HelpLabel(Tr.Get(Tr.Key.HelpTimingMode));
             }
             GUILayout.BeginHorizontal();
             GUILayout.Label(Tr.Get(Tr.Key.DecimalPrecision), GUILayout.Width(120));
@@ -888,12 +894,13 @@ public class Settings
         return v;
     }
 
-    /// <summary>枚举选择器：点击循环切换到下一个值。</summary>
-    static T EnumSel<T>(Tr.Key key, T value, Action onChange = null) where T : struct, Enum
+    /// <summary>枚举选择器：点击循环切换到下一个值。按钮显示本地化含义
+    /// （见 TextTypeNames），不再直接显示英文原始枚举名。</summary>
+    static T EnumSel<T>(Tr.Key key, T value, Func<T, string> nameOf, Action onChange = null) where T : struct, Enum
     {
         GUILayout.BeginHorizontal();
         GUILayout.Label(Tr.Get(key), GUILayout.Width(140));
-        if (GUILayout.Button(value.ToString(), GUILayout.Width(180)))
+        if (GUILayout.Button(nameOf(value), GUILayout.Width(180)))
         {
             var vals = (T[])Enum.GetValues(typeof(T));
             int i = Array.IndexOf(vals, value);
@@ -902,6 +909,18 @@ public class Settings
         }
         GUILayout.EndHorizontal();
         return value;
+    }
+
+    static GUIStyle _helpStyle;
+    /// <summary>设置项下的小字说明行（淡色、自动换行）——把各文本类型的语义直接声明在界面里。</summary>
+    static void HelpLabel(string text)
+    {
+        if (_helpStyle == null)
+        {
+            _helpStyle = new GUIStyle(GUI.skin.label) { fontSize = 11, wordWrap = true };
+            _helpStyle.normal.textColor *= new Color(1f, 1f, 1f, 0.7f);
+        }
+        GUILayout.Label(text, _helpStyle);
     }
 
     /// <summary>0..max 的整数小数位滑条（带可编辑文本框）。</summary>
