@@ -47,6 +47,12 @@ public class Settings
     /// <summary>任一 Jongyeol 扩展文本开启。拆掉总开关后，用它决定「Jongyeol 风格」的连带表现
     /// （富格式进度文本、扩展文本的小数精度等），避免普通模式用户被动接受这些变化。</summary>
     public bool JongyeolStyleActive => ShowFPS || ShowAuthor || ShowState || ShowDeath || ShowStart || ShowTiming;
+
+    /// <summary>任一挂在主容器下的栈式文本开启（含 XScore 与三个潜力值文本）。
+    /// 主容器一旦 SetActive(false)，其下所有文本都不渲染；布局也只在任一元素开启时才跑。
+    /// 新增显示元素必须并入此处，否则会出现「开关打开、文本却永远不显示」。</summary>
+    public bool AnyStackedTextVisible => ShowProgress || ShowAccuracy || ShowXAccuracy || ShowMusicTime
+        || ShowMapTime || ShowCheckpoint || ShowBest || ShowXScore || JongyeolStyleActive;
     public float FPSRefreshRate = 0.2f;
     public int JongyeolDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
@@ -158,7 +164,7 @@ public class Settings
     public bool ShowXPerfectInJudgement;
     public bool ShowAutoInXPerfect;
     // 统一后的唯一显示顺序（原 GeneralDisplayOrder 已并入：两个模式本就是同一个栈式布局）
-    public int[] JongyeolDisplayOrder = [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15];
+    public int[] JongyeolDisplayOrder = [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
     public int[] BpmLineOrder = [0, 1, 2];
     public bool[] BpmLineVisibility = [true, true, true];
     public int[] AttemptLineOrder = [0, 1];
@@ -318,7 +324,8 @@ public class Settings
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
                 });
-                if (ShowXScore != prevXs) { var o = Overlayer.Overlay.Instance; o?.SetupLocationMain(); }
+                // 切换开关会改变主容器/栈的可见性，必须走完整刷新（RefreshVisibility 内含 SetupLocationMain）
+                if (ShowXScore != prevXs) Overlayer.Overlay.Instance?.RefreshVisibility();
             }
         });
 
@@ -618,6 +625,21 @@ public class Settings
     }
 
     static int[] GetDefaultJongyeolOrder() => [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+
+    /// <summary>把默认顺序里存在、但用户数组里缺失的元素追加到末尾。
+    /// 旧版配置保存的顺序数组不含后加的元素（如 XScore / 潜力值），
+    /// 不补齐 SetupLocation 的 foreach 就永远遍历不到它们——表现为开关打开却始终不显示。</summary>
+    static int[] AppendMissingJongyeolElements(int[] order)
+    {
+        var defaults = GetDefaultJongyeolOrder();
+        var have = new HashSet<int>(order);
+        var missing = defaults.Where(x => !have.Contains(x)).ToArray();
+        if (missing.Length == 0) return order;
+        var result = new int[order.Length + missing.Length];
+        order.CopyTo(result, 0);
+        missing.CopyTo(result, order.Length);
+        return result;
+    }
 
     static string GetElementName(DisplayElement elem) => elem switch
     {
@@ -1247,7 +1269,11 @@ public class Settings
         if (s.JongyeolDisplayOrder == null || s.JongyeolDisplayOrder.Length == 0)
             s.JongyeolDisplayOrder = GetDefaultJongyeolOrder();
         else
-            s.JongyeolDisplayOrder = s.JongyeolDisplayOrder.Where(x => IsValidJongyeolElement(x)).ToArray();
+            // 先剔除越界值，再补齐旧配置里缺失的元素：新增显示元素（如 XScore / 潜力值）
+            // 若不在顺序数组里，SetupLocation 的 foreach 根本不会遍历到它们，
+            // 表现为「开关打开了但文本永远不显示」。补齐追加在末尾，不打乱用户已排的顺序。
+            s.JongyeolDisplayOrder = AppendMissingJongyeolElements(
+                s.JongyeolDisplayOrder.Where(x => IsValidJongyeolElement(x)).ToArray());
         if (s.BpmLineOrder == null || s.BpmLineOrder.Length == 0)
             s.BpmLineOrder = [0, 1, 2];
         if (s.BpmLineVisibility == null || s.BpmLineVisibility.Length != 3)

@@ -163,7 +163,7 @@ public class Overlay
 
     public void SetupLocationMain()
     {
-        // 统一的栈式布局：全部 13 个可栈排元素共栈、共顺序（JongyeolDisplayOrder），
+        // 统一的栈式布局：全部 18 个可栈排元素共栈、共顺序（JongyeolDisplayOrder），
         // 未启用的元素自然跳过。原 GeneralDisplayOrder 路径与 Jongyeol 路径本就是同一布局。
         Jongyeol.SetupLocation();
     }
@@ -553,7 +553,7 @@ public class Overlay
     public void RefreshVisibility()
     {
         var s = Main.Settings;
-        if (_mainContainer) _mainContainer.SetActive(s.ShowProgress || s.ShowAccuracy || s.ShowXAccuracy || s.ShowMusicTime || s.ShowMapTime || s.ShowCheckpoint || s.ShowBest);
+        if (_mainContainer) _mainContainer.SetActive(s.AnyStackedTextVisible);
         if (_bpmObject) { _bpmObject.SetActive(s.ShowBPM); if (s.ShowBPM && GameObject.activeSelf) UpdateBPM(); }
         for (int i = 0; i < 4; i++) if (_judgementObjects[i]) _judgementObjects[i].SetActive(s.ShowJudgement && i < (VersionSafe.IsCoopMode() && VersionSafe.GetPlayerCount() > 1 ? Math.Min(VersionSafe.GetPlayerCount(), 4) : 1)); if (s.ShowJudgement) { SetupLocationJudgement(); if (GameObject.activeSelf) UpdateJudgement(); }
         if (_comboObject) { _comboObject.SetActive(s.ShowCombo); if (s.ShowCombo && GameObject.activeSelf) UpdateCombo(Features.GameLifecycleHelper.ComboCount, false); }
@@ -1008,9 +1008,8 @@ public class Overlay
         SongPlaying = false; IsDeath = false;
 
         // 任意可栈排元素开启即需要布局（原条件漏了 Accuracy/XAccuracy/MapTime，
-        // 只开精度时栈不会被摆位——顺手修正）
-        if (s.ShowProgress || s.ShowAccuracy || s.ShowXAccuracy || s.ShowMusicTime || s.ShowMapTime ||
-            s.ShowCheckpoint || s.ShowBest || s.JongyeolStyleActive)
+        // 只开精度时栈不会被摆位——顺手修正；XScore/潜力值同样并入）
+        if (s.AnyStackedTextVisible)
             SetupLocationMain();
         OverlayTextManager.SeedProgress(StartProgress);
         if (s.ShowProgress || s.ShowProgressBar || s.ShowBest)
@@ -1030,7 +1029,7 @@ public class Overlay
         ApplyAlignment();
         ApplyFontStyle();
         Features.GameLifecycleHelper.ComboCount = 0;
-        if (!suppressNativeUI && s.RepositionAutoText) RepositionAutoText(s.ShowProgress || s.ShowAccuracy || s.ShowXAccuracy || s.ShowMusicTime || s.ShowMapTime || s.ShowCheckpoint || s.ShowBest, s.Size);
+        if (!suppressNativeUI && s.RepositionAutoText) RepositionAutoText(s.AnyStackedTextVisible, s.Size);
         RefreshTimeLabels();
     }
 

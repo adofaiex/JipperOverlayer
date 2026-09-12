@@ -17,7 +17,8 @@ internal static class V136Patches
             typeof(ScrMistakesAddHitJudgementPatch),
             typeof(ScrMistakesResetPatch));
         PatchManager.RegisterPatches(() => Main.Settings.ShowProgress || Main.Settings.ShowAccuracy ||
-              Main.Settings.ShowXAccuracy || Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime ||
+              Main.Settings.ShowXAccuracy || Main.Settings.ShowXScore ||
+              Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime ||
               Main.Settings.ShowCheckpoint || Main.Settings.ShowBest || Main.Settings.ShowProgressBar,
             typeof(ScrMistakesCalcAccPatch));
         PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && Main.Settings.AllowELCombo,

@@ -21,7 +21,8 @@ internal static class GameLifecyclePatches
         );
 
         PatchManager.RegisterPatches(() => Main.Settings.ShowProgress || Main.Settings.ShowAccuracy ||
-              Main.Settings.ShowXAccuracy || Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime ||
+              Main.Settings.ShowXAccuracy || Main.Settings.ShowXScore || Main.Settings.ShowMusicTime ||
+              Main.Settings.ShowMapTime ||
               Main.Settings.ShowCheckpoint || Main.Settings.ShowBest || Main.Settings.ShowProgressBar ||
               Main.Settings.ShowTimingScale || Main.Settings.ShowAttempt || Main.Settings.ShowFullAttempt ||
               Main.Settings.ShowState || Main.Settings.ShowDeath || Main.Settings.ShowStart || Main.Settings.ShowTiming,
@@ -32,7 +33,8 @@ internal static class GameLifecyclePatches
         PatchManager.RegisterPatches(() => Main.Settings.RepositionAutoText, typeof(ScrShowIfDebugAwakePatch));
         // auto 切换会影响 State 文本与 checkAuto 类元素（精度/X精度/检查点/最佳）的可见性
         PatchManager.RegisterPatches(() => Main.Settings.ShowState || Main.Settings.ShowAccuracy ||
-              Main.Settings.ShowXAccuracy || Main.Settings.ShowCheckpoint || Main.Settings.ShowBest,
+              Main.Settings.ShowXAccuracy || Main.Settings.ShowXScore ||
+              Main.Settings.ShowCheckpoint || Main.Settings.ShowBest,
             typeof(RdcSetAutoPatch));
 
         // Jongyeol 计时取自 scrMisc 的判定函数，目标按游戏版本挑选：

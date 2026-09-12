@@ -18,7 +18,8 @@ internal static class V141Patches
             typeof(ScrMarginAddHitJudgementPatch),
             typeof(ScrMarginResetPatch));
         PatchManager.RegisterPatches(() => Main.Settings.ShowProgress || Main.Settings.ShowAccuracy ||
-              Main.Settings.ShowXAccuracy || Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime ||
+              Main.Settings.ShowXAccuracy || Main.Settings.ShowXScore ||
+              Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime ||
               Main.Settings.ShowCheckpoint || Main.Settings.ShowBest || Main.Settings.ShowProgressBar,
             typeof(ScrMarginCalcAccPatch));
         PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && Main.Settings.AllowELCombo,

@@ -8,7 +8,7 @@ namespace JipperOverlayer.Overlayer.Jongyeol;
 
 // 原「Jongyeol 模式」的承载模块。总开关移除后它常驻运行，负责：
 //   1. 六个扩展文本（FPS/Author/State/Death/Start/Timing）的创建、布局与更新
-//   2. 统一的栈式布局（全部 13 个可栈排元素，顺序见 Settings.JongyeolDisplayOrder）
+//   2. 统一的栈式布局（全部 18 个可栈排元素，顺序见 Settings.JongyeolDisplayOrder）
 //   3. BPM（含伪 BPM 检测）与时间文本的统一更新实现
 // 各功能由独立设置开关控制，可与普通模式任意搭配。
 public class JongyeolModule

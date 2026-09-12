@@ -12,7 +12,9 @@
 
 ### Bug Fixes
 
-- (none yet)
+- **XScore / 潜力值文本始终不显示**：`JongyeolDisplayOrder` 的字段初始值仍只到上一次新增元素为止（`10..15`），而 `Settings.Load` 只在数组为 null 或空时才回退到 `GetDefaultJongyeolOrder()` —— 于是五个新元素（`AvgTiming`/`XScore`/`P.Accuracy`/`P.XAccuracy`/`P.XScore`）从未被布局遍历到，新装与老配置都中招。默认数组已补全，`Load` 还会把保存的顺序里缺失的默认元素追加到末尾，已有 `Settings.json` 也会被修好
+- **只开 XScore 时整块不可见**：主容器 `SetActive` 与 `Show` 的布局门控漏了 `ShowXScore`，关掉进度、只留 XScore 会让整条栈隐藏；两处改用新增的 `Settings.AnyStackedTextVisible`
+- **关掉精度/X精度后 XScore 不更新**：精度补丁（`ScrMistakesCalcAccPatch` / `ScrMarginCalcAccPatch`）与逐格补丁只按 `ShowAccuracy || ShowXAccuracy` 注册，两者都关时 XScore 冻结在初始空串；`ShowXScore` 现已并入这些注册门控
 
 ## v1.1.5 — 2026.09.12
 
