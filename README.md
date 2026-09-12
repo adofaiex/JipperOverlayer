@@ -50,8 +50,6 @@ ADOFAI/Mods/JipperOverlayer/
 ├── Info.json
 ├── JipperOverlayer.dll
 ├── JipperOverlayer.Loader.UMM.dll
-├── jipperoverlayerbundle2022
-├── jipperoverlayerbundle6000
 ```
 
 ### MelonLoader variant
@@ -59,9 +57,11 @@ ADOFAI/Mods/JipperOverlayer/
 ADOFAI/Mods/JipperOverlayer-melon/
 ├── JipperOverlayer.dll
 ├── JipperOverlayer.Loader.Melon.dll
-├── jipperoverlayerbundle2022
-├── jipperoverlayerbundle6000
 ```
+
+> **No asset files ship with the package.** The default font is embedded in `JipperOverlayer.dll`
+> and self-extracts to `assets/MAPLESTORY_OTF_BOLD.OTF` on first run — only when that file is
+> missing, so a font you replace yourself is never overwritten. The progress bar is built in code.
 
 ## Requirements
 
@@ -77,6 +77,8 @@ ADOFAI/Mods/JipperOverlayer-melon/
 - Steam installation of ADOFAI (for reference DLLs in `Libs/`)
 
 > **Note:** `Libs/` is `.gitignore`d. Run `cp -r "$ADOFAI/A Dance of Fire and Ice_Data/Managed/"* Libs/` to populate it from your game installation (requires one-time setup).
+
+> The default font lives at `JipperOverlayer/assets/MAPLESTORY_OTF_BOLD.OTF` and is embedded into the DLL at compile time — no packing step, and no Unity editor project is involved.
 
 ### Build
 

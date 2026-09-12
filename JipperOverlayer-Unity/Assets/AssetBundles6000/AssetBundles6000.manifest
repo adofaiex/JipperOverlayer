@@ -1,9 +1,0 @@
-ManifestFileVersion: 0
-UnityVersion: 6000.3.16f1
-CRC: 137403403
-HashAppended: 0
-AssetBundleManifest:
-  AssetBundleInfos:
-    Info_0:
-      Name: jipperoverlayerbundle
-      Dependencies: {}

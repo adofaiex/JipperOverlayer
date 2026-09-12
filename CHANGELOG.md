@@ -16,6 +16,11 @@
 - **只开 XScore 时整块不可见**：主容器 `SetActive` 与 `Show` 的布局门控漏了 `ShowXScore`，关掉进度、只留 XScore 会让整条栈隐藏；两处改用新增的 `Settings.AnyStackedTextVisible`
 - **关掉精度/X精度后 XScore 不更新**：精度补丁（`ScrMistakesCalcAccPatch` / `ScrMarginCalcAccPatch`）与逐格补丁只按 `ShowAccuracy || ShowXAccuracy` 注册，两者都关时 XScore 冻结在初始空串；`ShowXScore` 现已并入这些注册门控
 
+### Refactor
+
+- **移除 AssetBundle 管线，默认字体改为内嵌自释放**：bundle 里实际只有一份 698KB 的 OTF 字体和一个三个 Image 全部使用 Unity 内置 `UISprite` 的 prefab —— 却为此维护着一个 Unity 编辑器工程、三份 bundle 二进制（其中 `AssetBundles2022` 与 `AssetBundles6000` 字节完全相同且 manifest 都写着 `UnityVersion: 6000.3.16f1`，双包拆分早已名存实亡）以及一份 4.29MB 的 `jipperresourcepackbundle` 死资产。现在：字体作为 `EmbeddedResource` 直接内嵌主 DLL（不经压缩，无需打包脚本、无 gitignored 构建输入、全新克隆零额外步骤），首次运行释放到 `ModPath\assets\`——仅写缺失文件，用户替换过的永不覆盖，`.tmp` + `Move` 原子落盘；进度条改为纯代码构建，逐字段对齐原 prefab（子物体顺序、锚点、pivot、尺寸、颜色、Sliced 类型）。整个 `JipperOverlayer-Unity`（63 个文件、约 44MB）与全部 bundle 产物删除，`BundleLoader` 由 `AssetLoader` 取代，CI 打包步骤与 README 同步精简
+- **清理与防御**：`AssetBundles/`（无后缀）目录及其 4.29MB `jipperresourcepackbundle` 运行时零引用，已一并清除；代码重建的进度条在取不到 Unity 内置 `UISprite` 时退化为直角矩形并记日志，不再静默出错（原 prefab 的 Sliced 类型与 11px 九宫格边框在 14px 高的元素上本就退化为直角，此处保持原观感不变）
+
 ## v1.1.5 — 2026.09.12
 
 ### Features

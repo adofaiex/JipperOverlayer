@@ -156,7 +156,7 @@ public class Overlay
         t.anchorMin = t.anchorMax = new Vector2(0, 1);
         t.sizeDelta = new Vector2(456, 30);
         text = go.AddComponent<TextMeshProUGUI>();
-        text.font = BundleLoader.FontAsset;
+        text.font = AssetLoader.FontAsset;
         text.fontSize = Main.Settings?.MainFontSize ?? 25;
         ShadowManager.ApplyShadow(text);
     }
@@ -196,7 +196,7 @@ public class Overlay
         t.anchoredPosition = new Vector2(-16, -16);
         t.sizeDelta = new Vector2(456, 240);
         BPMText = go.AddComponent<TextMeshProUGUI>();
-        BPMText.font = BundleLoader.FontAsset;
+        BPMText.font = AssetLoader.FontAsset;
         BPMText.alignment = TextAlignmentOptions.TopRight;
         BPMText.lineSpacing = 30;
         BPMText.fontSize = Main.Settings?.BPMFontSize ?? 25;
@@ -214,7 +214,7 @@ public class Overlay
             t.anchorMin = t.anchorMax = t.pivot = new Vector2(0.5f, 0);
             t.sizeDelta = new Vector2(1000, 30);
             JudgementTexts[i] = go.AddComponent<TextMeshProUGUI>();
-            JudgementTexts[i].font = BundleLoader.FontAsset;
+            JudgementTexts[i].font = AssetLoader.FontAsset;
             JudgementTexts[i].fontSize = Main.Settings?.JudgeFontSize ?? 25;
             JudgementTexts[i].color = new Color(0.8509804f, 0.345098f, 1);
             ShadowManager.ApplyShadow(JudgementTexts[i]);
@@ -240,7 +240,7 @@ public class Overlay
         t.sizeDelta = new Vector2(300, 0);
         _comboTitleTransform = t;
         ComboTitle = title.AddComponent<TextMeshProUGUI>();
-        ComboTitle.font = BundleLoader.FontAsset;
+        ComboTitle.font = AssetLoader.FontAsset;
         ComboTitle.fontSize = Main.Settings?.ComboTitleFontSize ?? 40;
         ComboTitle.text = Main.Settings.Labels.ComboTitle;
         ComboTitle.alignment = TextAlignmentOptions.Center;
@@ -257,7 +257,7 @@ public class Overlay
         t.sizeDelta = new Vector2(300, 0);
         ComboTextTransform = t;
         ComboText = val.AddComponent<TextMeshProUGUI>();
-        ComboText.font = BundleLoader.FontAsset;
+        ComboText.font = AssetLoader.FontAsset;
         ComboText.fontSize = Main.Settings?.ComboValFontSize ?? 108;
         ComboText.alignment = TextAlignmentOptions.Top;
         fitter = val.AddComponent<ContentSizeFitter>();
@@ -269,13 +269,14 @@ public class Overlay
 
     protected void InitializeProgressBar()
     {
-        if (BundleLoader.ProgressObject == null) return;
-        var go = Object.Instantiate(BundleLoader.ProgressObject);
+        // 进度条改为纯代码构建（原 bundle 里的 prefab 三个 Image 全用 Unity 内置
+        // UISprite，无自定义贴图，代码重建可逐字段对齐）。
+        // / The progress bar is now built entirely in code: the old prefab's three Images all
+        // used Unity's built-in UISprite with no custom textures, so a code rebuild matches
+        // it field for field.
+        var go = AssetLoader.CreateProgressBar(Canvas.transform);
         var t = go.GetComponent<RectTransform>();
-        t.SetParent(Canvas.transform);
-        t.anchorMin = t.anchorMax = t.pivot = new Vector2(0.5f, 1);
         t.anchoredPosition = new Vector2(0, -10);
-        t.sizeDelta = new Vector2(642, 18);
         ProgressBar = new ProgressBar(t);
         _progressBarObject = go;
     }
@@ -288,7 +289,7 @@ public class Overlay
         t.anchorMin = t.anchorMax = t.pivot = new Vector2(0.5f, 0);
         t.sizeDelta = new Vector2(300, 30);
         TimingScaleText = go.AddComponent<TextMeshProUGUI>();
-        TimingScaleText.font = BundleLoader.FontAsset;
+        TimingScaleText.font = AssetLoader.FontAsset;
         TimingScaleText.fontSize = Main.Settings?.TimingFontSize ?? 20;
         TimingScaleText.alignment = TextAlignmentOptions.Bottom;
         ShadowManager.ApplyShadow(TimingScaleText);
@@ -304,7 +305,7 @@ public class Overlay
         t.anchoredPosition = new Vector2(310, 35);
         t.sizeDelta = new Vector2(300, 30);
         AttemptText = go.AddComponent<TextMeshProUGUI>();
-        AttemptText.font = BundleLoader.FontAsset;
+        AttemptText.font = AssetLoader.FontAsset;
         AttemptText.fontSize = Main.Settings?.AttemptFontSize ?? 25;
         AttemptText.alignment = TextAlignmentOptions.BottomLeft;
         ShadowManager.ApplyShadow(AttemptText);

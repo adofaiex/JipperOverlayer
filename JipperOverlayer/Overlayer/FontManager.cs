@@ -24,9 +24,9 @@ public static class FontManager
     {
         FontList = [];
 
-        // 1. Bundle font
-        if (BundleLoader.FontAsset != null)
-            FontList.Add(new FontEntry { name = "Bundle Font", font = BundleLoader.FontAsset, sourceFontName = "Bundle Font" });
+        // 1. 内嵌默认字体 / Embedded default font
+        if (AssetLoader.FontAsset != null)
+            FontList.Add(new FontEntry { name = "Default Font", font = AssetLoader.FontAsset, sourceFontName = "Default Font" });
 
         // 2. Game Font objects — convert to TMP (skips fonts with path-like names from other mods)
         var allFonts = Resources.FindObjectsOfTypeAll<Font>();
@@ -121,8 +121,8 @@ public static class FontManager
     public static TMP_FontAsset GetFont(int index)
     {
         if (FontList == null || index < 0 || index >= FontList.Count)
-            return BundleLoader.FontAsset;
-        return FontList[index].font ?? BundleLoader.FontAsset;
+            return AssetLoader.FontAsset;
+        return FontList[index].font ?? AssetLoader.FontAsset;
     }
 
     public static int FindFontIndex(string fontName)

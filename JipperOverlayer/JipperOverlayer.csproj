@@ -50,10 +50,6 @@
       <HintPath>..\Libs\UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="UnityEngine.AssetBundleModule">
-      <HintPath>..\Libs\UnityEngine.AssetBundleModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="UnityEngine.AudioModule">
       <HintPath>..\Libs\UnityEngine.AudioModule.dll</HintPath>
       <Private>false</Private>
@@ -98,6 +94,16 @@
       <HintPath>..\Libs\UnityModManager.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 默认字体内嵌进主 DLL：不再随包分发 AssetBundle，也不再依赖游戏 Unity 版本。
+         assets/ 里的原始 OTF 是被跟踪的事实来源，LogicalName 即运行时
+         GetManifestResourceStream 用的资源名。 / Embedded default font: no AssetBundle
+         ships with the package anymore, and nothing depends on the game's Unity version.
+         The original OTF under assets/ is the tracked source of truth; LogicalName is the
+         resource name used by GetManifestResourceStream at runtime. -->
+    <EmbeddedResource Include="assets\MAPLESTORY_OTF_BOLD.OTF" LogicalName="JipperOverlayer.Assets.MAPLESTORY_OTF_BOLD.OTF" />
   </ItemGroup>
 
 </Project>

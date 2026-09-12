@@ -19,9 +19,8 @@ Libs/
 *.userprefs
 
 # ===== Unity =====
-JipperOverlayer-Unity/Library/
-JipperOverlayer-Unity/Logs/
-JipperOverlayer-Unity/UserSettings/
+# (JipperOverlayer-Unity 已删除：资源改为内嵌主 DLL，不再需要 Unity 编辑器工程)
+# (The JipperOverlayer-Unity editor project is gone: assets are embedded in the main DLL now.)
 
 # ===== Windows =====
 Desktop.ini

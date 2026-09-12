@@ -58,7 +58,7 @@ public static class Main
         VersionSafe.Setup();
         RegisterFeatures();
 
-        BundleLoader.LoadBundle();
+        AssetLoader.Load();
         FontManager.ScanFonts();
         PlayCount.Load();
 
@@ -93,7 +93,7 @@ public static class Main
         }
 
         PlayCount.Dispose();
-        BundleLoader.UnloadBundle();
+        AssetLoader.Unload();
         PatchManager.UnpatchAll();
     }
 
