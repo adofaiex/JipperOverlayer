@@ -19,6 +19,7 @@
 - **「仅潜力值」模式下主文本行残留（冻结旧值）**：`SetDualText` 在 Potential 模式只写 `P.*` 文本、永不写主文本，但 `IsJongyeolElementEnabled` 的主元素门控不看 `*TextType` —— 主文本行继续占着栈位，且游戏中途从当前值切到仅潜力值后主文本永远停在切换前的旧值。主行现随模式隐藏（coop 例外：潜力值内联进主文本，主行恒显）
 - **coop 潜力 X 精度分母错用 `seqID`**：`SetXAccuracy` 直接把 `seqID` 当已判定格数外推，未经 `GetJudgedTiles` 扣除 Midspin（r149+），含 Midspin 的图里潜力 X 精度有偏差；现与单人路径一致
 - **XScore 满分途中显示 `MAX--2`（结算才恢复）**：游戏源码 `scrPlanet.cs` 里 `AddHit`（我们的更新在其内部的 `CalculatePercentAcc` 后缀触发，`hitMarginsCount` 已含本次）先于 `MoveToNextFloor` 更新 `currentSeqID`——打击瞬间 `seqID` 恒落后一格，`judged = seqID − midspin` 少算一格，满分会显示负的 MAX 差值，直到通关时序落定才变回 `MAX-0`。`GetJudgedTiles` 改为对 `hitMarginsCount` 求和（与 XScore 同一瞬间读取、天然自洽），不再依赖 `seqID`；检查点重试时游戏清零并重放存档判定，求和式随之保持一致
+- **XScore 的 MAX−n 与游戏结算完全同口径**：r150 结算界面公式为 `xScore (MAX-{maxXScore − xScore})`（`DetailedResults.cs:92`，普通局 num7=0）。现反射直读原生 `xScore`/`maxXScore`（公开成员，反射以过 compat-r148 编译门禁），实时显示为 `maxXScore − xScore − 2×剩余玩家打击格`——结算时剩余为 0、与游戏逐字相等；开局为 0；TooEarly 这类不前进格子的多余按压不影响分母（此前两版分母分别把 auto 地板算多、把多余按压算多，实测与结算差 +2 / +16）。潜力值 = 剩余玩家打击格全 XPerfect 的收敛值，目标是全图满分常量。另在 `MoveToNextFloor` 后缀补一次同帧刷新，消除 `currentSeqID` 滞后一格造成的瞬间毛刺
 - **XScore 的 `(MAX-n)` 两处冗余省略**：n == 0（未掉分）时不再显示 `(MAX-0)`；潜力值的 MAX−n 恒等于当前值的（两者都 = maxXScore − xScore，潜力只是两边同加 2×剩余格），不再重复展示——一行双值从 `0 (MAX-0)(1022 (MAX-0))` 变为 `0 (1022)`
 
 ### Refactor

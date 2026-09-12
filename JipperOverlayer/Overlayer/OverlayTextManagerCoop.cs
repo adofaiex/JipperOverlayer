@@ -153,17 +153,33 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         int seqID = GameRefs.CurrentSeqID;
         int judged = AccuracyMath.GetJudgedTiles(hits, seqID);
         int remaining = AccuracyMath.GetRemainingTiles(seqID);
-        int xScore = AccuracyMath.GetXScore(hits);
-        int maxXScore = judged * AccuracyMath.XPerfectValue;
-        string current = AccuracyMath.GetXScoreText(xScore, maxXScore, s.XScoreTextType);
+        // 原生读数 + 游戏结算同口径（MAX−n = maxXScore − xScore − 2×剩余玩家打击格）
+        var trackers = scrMistakesManager.marginTrackers;
+        bool native = AccuracyMath.TryGetNativeXScore(trackers != null && i < trackers.Length ? trackers[i] : null,
+            out int x, out int mapMax);
+        int soFarMax, potentialX, potentialTotal;
+        if (native)
+        {
+            int rem = AccuracyMath.GetRemainingPlayerHitFloors(seqID);
+            soFarMax = Math.Max(0, mapMax - rem * AccuracyMath.XPerfectValue);
+            potentialTotal = mapMax;
+            potentialX = x + rem * AccuracyMath.XPerfectValue;
+        }
+        else
+        {
+            x = AccuracyMath.GetXScore(hits);
+            soFarMax = judged * AccuracyMath.XPerfectValue;
+            potentialTotal = soFarMax + remaining * AccuracyMath.XPerfectValue;
+            potentialX = x + remaining * AccuracyMath.XPerfectValue;
+        }
+        string current = AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType);
         if (s.XScorePotentialType != PotentialTextType.Current)
         {
-            string p = AccuracyMath.GetXScoreText(xScore + remaining * AccuracyMath.XPerfectValue,
-                maxXScore + remaining * AccuracyMath.XPerfectValue, s.XScoreTextType, potential: true);
+            string p = AccuracyMath.GetXScoreText(potentialX, potentialTotal, s.XScoreTextType, potential: true);
             if (s.XScorePotentialType == PotentialTextType.Potential) current = p;
             else current += $" ({p})";
         }
-        pData.XScoreString = $" | <color=#{s.Colors.XScore.GetHex(maxXScore == 0 ? 1 : (float)xScore / maxXScore)}>{current}</color>";
+        pData.XScoreString = $" | <color=#{s.Colors.XScore.GetHex(soFarMax == 0 ? 1 : (float)x / soFarMax)}>{current}</color>";
     }
 
     public void UpdateProgress(Overlay overlay)

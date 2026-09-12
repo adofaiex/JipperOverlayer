@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
@@ -397,6 +398,59 @@ internal static class AccuracyMath
         if (floors == null || floors.Count == 0) return 0;
         int remaining = floors.Count - 1 - seqID;
         return remaining > 0 ? remaining : 0;
+    }
+
+    // ===== 原生 XScore 读数（r150）：不再自推分母 =====
+    // 自推的 judged = Σhits − midspin 与原生口径不符：原生满分只数
+    // PlayerHitFloors（seqID>0 且非 shouldBeAutoPlayed、非 midSpin，scrLevelMaker.cs:94），
+    // 而 Σhits 还包含 auto 地板、Multipress 多余按压，以及死亡续跑时
+    // RegisterDeadTiles 批量补记的 FailedFloor——每块 auto 地板即差 2 分。
+    // 这些成员 r148 没有，直接引用过不了 compat-r148 编译门禁，故走反射缓存。
+
+    static FieldInfo _nativeXScoreField;
+    static PropertyInfo _nativeMaxXScoreProp;
+    static bool _nativeXScoreProbed;
+
+    /// <summary>读游戏原生 xScore / maxXScore（r150 公开成员）。菜单中 lm 为空时返回 false。
+    /// xScore 当前分；maxXScore = 全图满分（PlayerHitFloors×2，常量）。
+    /// MAX−n 用「游戏结算同口径」：maxXScore − xScore − 2×剩余玩家打击格
+    /// （结算时剩余为 0，正好退化成 DetailedResults 的原式）。不能用
+    /// playerHitMarginCount 当分母——它把 TooEarly 这类不前进格子的多余按压也计入。</summary>
+    public static bool TryGetNativeXScore(scrMarginTracker tracker, out int xScore, out int maxXScore)
+    {
+        xScore = maxXScore = 0;
+        if (!HitMarginCompat.HasNativeXPerfect || tracker == null || ADOBase.lm == null) return false;
+        if (!_nativeXScoreProbed)
+        {
+            _nativeXScoreProbed = true;
+            _nativeXScoreField = AccessTools.Field(typeof(scrMarginTracker), "xScore");
+            _nativeMaxXScoreProp = AccessTools.Property(typeof(scrMarginTracker), "maxXScore");
+        }
+        if (_nativeXScoreField == null || _nativeMaxXScoreProp == null) return false;
+        xScore = (int)_nativeXScoreField.GetValue(tracker);
+        maxXScore = (int)_nativeMaxXScoreProp.GetValue(tracker);
+        return true;
+    }
+
+    static FieldInfo _playerHitFloorsField;
+    static int _remPlayerSeqID = -1, _remPlayerCount;
+
+    /// <summary>剩余「玩家打击格」数（seqID>0 且非 auto、非 midspin 的格子）。
+    /// 与原生 maxXScore 同口径，按 seqID 记忆化；反射失败退回全格口径。</summary>
+    public static int GetRemainingPlayerHitFloors(int seqID)
+    {
+        if (!HitMarginCompat.HasNativeXPerfect) return GetRemainingTiles(seqID);
+        if (_remPlayerSeqID == seqID) return _remPlayerCount;
+        _playerHitFloorsField ??= AccessTools.Field(typeof(scrLevelMaker), "PlayerHitFloors");
+        int count;
+        if (_playerHitFloorsField?.GetValue(ADOBase.lm) is IReadOnlyList<scrFloor> floors)
+        {
+            count = 0;
+            foreach (var f in floors) if (f != null && f.seqID > seqID) count++;
+        }
+        else count = GetRemainingTiles(seqID);
+        _remPlayerSeqID = seqID;
+        return _remPlayerCount = count;
     }
 
     /// <summary>从判定计数取「完美组」与「合格组」数量（合格 = 完美 + Early/LatePerfect）。

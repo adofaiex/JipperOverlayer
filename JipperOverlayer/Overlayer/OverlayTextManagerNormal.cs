@@ -74,15 +74,32 @@ public class OverlayTextManagerNormal : IOverlayTextManager
     static void UpdateXScore(Overlay overlay, int[] hits, int judged, int remaining)
     {
         var s = Main.Settings;
-        int xScore = AccuracyMath.GetXScore(hits);
-        int maxXScore = judged * AccuracyMath.XPerfectValue;
-        int potentialXScore = xScore + remaining * AccuracyMath.XPerfectValue;
-        int totalXScore = maxXScore + remaining * AccuracyMath.XPerfectValue;
+        var trackers = scrMistakesManager.marginTrackers;
+        bool native = AccuracyMath.TryGetNativeXScore(trackers is { Length: > 0 } ? trackers[0] : null,
+            out int x, out int mapMax);
+        int soFarMax, potentialX, potentialTotal;
+        if (native)
+        {
+            // 游戏结算同口径（DetailedResults.cs:92）：MAX−n = maxXScore − xScore − 2×剩余。
+            // 结算时剩余为 0 → 与结算界面完全一致；开局为 0；TooEarly 等不前进格子的
+            // 多余按压不影响分母（playerHitMarginCount 口径会把它们算进来，差 +16 即此因）。
+            int rem = AccuracyMath.GetRemainingPlayerHitFloors(GameRefs.CurrentSeqID);
+            soFarMax = Math.Max(0, mapMax - rem * AccuracyMath.XPerfectValue);
+            potentialTotal = mapMax;
+            potentialX = x + rem * AccuracyMath.XPerfectValue;
+        }
+        else
+        {
+            x = AccuracyMath.GetXScore(hits);
+            soFarMax = judged * AccuracyMath.XPerfectValue;
+            potentialTotal = soFarMax + remaining * AccuracyMath.XPerfectValue;
+            potentialX = x + remaining * AccuracyMath.XPerfectValue;
+        }
         SetDualText(s.XScorePotentialType, overlay.Jongyeol?.XScoreText, overlay.Jongyeol?.PotentialXScoreText, "XScore",
-            AccuracyMath.GetXScoreText(xScore, maxXScore, s.XScoreTextType),
-            AccuracyMath.GetXScoreText(potentialXScore, totalXScore, s.XScoreTextType, potential: true),
-            t => t.color = s.Colors.XScore.GetColor(maxXScore == 0 ? 1 : (float)xScore / maxXScore),
-            t => t.color = s.Colors.XScore.GetColor(totalXScore == 0 ? 1 : (float)potentialXScore / totalXScore));
+            AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType),
+            AccuracyMath.GetXScoreText(potentialX, potentialTotal, s.XScoreTextType, potential: true),
+            t => t.color = s.Colors.XScore.GetColor(soFarMax == 0 ? 1 : (float)x / soFarMax),
+            t => t.color = s.Colors.XScore.GetColor(potentialTotal == 0 ? 1 : (float)potentialX / potentialTotal));
     }
 
     public void UpdateProgress(Overlay overlay)

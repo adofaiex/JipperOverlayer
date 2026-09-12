@@ -129,6 +129,9 @@ internal static class PlanetMoveToNextFloorPatch
             overlay.UpdateProgress(__instance);
         if (s.ShowTimingScale) overlay.UpdateTimingScale();
         if (s.ShowAttempt || s.ShowFullAttempt) overlay.UpdateAttempts();
+        // XScore 的 MAX−n 依赖 currentSeqID 推剩余格；AddHit→CalculatePercentAcc 后缀触发时
+        // currentSeqID 尚未前移（滞后一格），这里补一次同帧刷新，渲染前把值改正确。
+        if (s.ShowXScore) overlay.UpdateAccuracy();
     }
 }
 
