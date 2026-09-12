@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using JipperOverlayer.Overlayer.Util;
 using UnityEngine;
 
 namespace JipperOverlayer.Overlayer;
@@ -56,7 +57,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
     public void UpdateProgress(Overlay overlay)
     {
         var labels = Main.Settings.Labels;
-        if (Main.Settings.JongyeolMode)
+        // 详细进度（当前/总数 [-剩余]）为独立样式开关，原属 Jongyeol 模式
+        if (Main.Settings.DetailedProgress)
         {
             int cur = GameRefs.CurrentSeqID;
             var floors = GameRefs.LevelMaker?.listFloors;
@@ -154,7 +156,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         var s = Main.Settings;
         if (!s.ShowDeath || !overlay.GameObject.activeSelf || overlay.DeathText == null) return;
         int[] hits = overlay.Hit;
-        if (_lastDeath != (_deathCount = hits[8] + hits[9]))
+        // 死亡数 = FailMiss + FailOverload（r150 下标为 10/11，不能写死 8/9）
+        if (_lastDeath != (_deathCount = HitMarginCompat.Get(hits, HitMarginCompat.FailMiss) + HitMarginCompat.Get(hits, HitMarginCompat.FailOverload)))
         {
             _sb.Clear();
             _sb.Append("<color=white>");
@@ -189,8 +192,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         {
             int[] hits = overlay.Hit;
             if (_deathCount != 0) { state = labels.StateComplete; overlay.StateText.color = sColors.JStateComplete; }
-            else if (hits[0] != 0) { state = labels.StateClear; overlay.StateText.color = sColors.JStateClear; }
-            else if (hits[1] != 0 || hits[5] != 0) { state = labels.StateNoMiss; overlay.StateText.color = sColors.JStateNoMiss; }
+            else if (HitMarginCompat.Get(hits, HitMarginCompat.TooEarly) != 0) { state = labels.StateClear; overlay.StateText.color = sColors.JStateClear; }
+            else if (HitMarginCompat.Get(hits, HitMarginCompat.VeryEarly) != 0 || HitMarginCompat.Get(hits, HitMarginCompat.VeryLate) != 0) { state = labels.StateNoMiss; overlay.StateText.color = sColors.JStateNoMiss; }
             else { state = labels.StatePerfectionist; overlay.StateText.color = sColors.JStatePerfectionist; }
         }
         var allFloors = GameRefs.LevelMaker?.listFloors;
@@ -204,18 +207,11 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         overlay.StateText.SetText(_sb);
     }
 
-    public bool CheckPurePerfect(Overlay overlay)
-    {
-        int[] hits = overlay.Hit;
-        for (int i = 0; i < hits.Length && i < 10; i++)
-        {
-            if (i is 3 or 7) continue;
-            if (hits[i] != 0) return false;
-        }
-        return true;
-    }
+    public bool CheckPurePerfect(Overlay overlay) => HitMarginCompat.IsPurePerfect(overlay.Hit);
 
-    public int GetTooJudgement(Overlay overlay) => overlay.Hit[0] + overlay.Hit[6];
+    // “Too” 判定数 = TooEarly + TooLate（r150 下标为 0/8，不能写死 0/6）
+    public int GetTooJudgement(Overlay overlay) =>
+        HitMarginCompat.Get(overlay.Hit, HitMarginCompat.TooEarly) + HitMarginCompat.Get(overlay.Hit, HitMarginCompat.TooLate);
 
     public void DirtyTextCaches()
     {

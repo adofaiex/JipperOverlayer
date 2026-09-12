@@ -12,7 +12,7 @@ internal static class V136Patches
     public static void RegisterAll()
     {
         PatchManager.RegisterPatches(() => Main.Settings.ShowBPM, typeof(ScrControllerHitBpmPatch));
-        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && !(Main.Settings.JongyeolMode && Main.Settings.AllowELCombo), typeof(ScrMistakesAddHitComboPatch));
+        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && !Main.Settings.AllowELCombo, typeof(ScrMistakesAddHitComboPatch));
         PatchManager.RegisterPatches(() => Main.Settings.ShowJudgement,
             typeof(ScrMistakesAddHitJudgementPatch),
             typeof(ScrMistakesResetPatch));
@@ -20,7 +20,7 @@ internal static class V136Patches
               Main.Settings.ShowXAccuracy || Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime ||
               Main.Settings.ShowCheckpoint || Main.Settings.ShowBest || Main.Settings.ShowProgressBar,
             typeof(ScrMistakesCalcAccPatch));
-        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && Main.Settings.JongyeolMode && Main.Settings.AllowELCombo,
+        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && Main.Settings.AllowELCombo,
             typeof(ScrMistakesAddHitJComboPatch));
     }
 }

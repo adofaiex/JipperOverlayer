@@ -69,19 +69,28 @@ internal static class PatchManager
         _sceneIsLoading = false; // 恢复轮询
     }
 
-    public static void RegisterPatch(Type patchType, Func<bool> toggle = null)
+    public static void RegisterPatch(Type patchType, Func<bool> toggle = null, string versionTag = null)
     {
         lock (_lock)
         {
             _registeredPatches[patchType] = new PatchRegistration(patchType, toggle ?? (() => true));
         }
-        Debug.Log($"[PatchManager] Registered patch: {patchType.Name}");
+        Debug.Log(string.IsNullOrEmpty(versionTag)
+            ? $"[PatchManager] Registered patch: {patchType.Name}"
+            : $"[PatchManager] Registered patch: {patchType.Name} [{versionTag}]");
     }
 
     public static void RegisterPatches(Func<bool> toggle, params Type[] patchTypes)
     {
         foreach (var patchType in patchTypes)
             RegisterPatch(patchType, toggle);
+    }
+
+    /// <summary>带版本标注的注册：日志里标明该补丁适用的游戏版本区间，便于排查版本分支。</summary>
+    public static void RegisterPatches(Func<bool> toggle, string versionTag, params Type[] patchTypes)
+    {
+        foreach (var patchType in patchTypes)
+            RegisterPatch(patchType, toggle, versionTag);
     }
 
     public static void RefreshPatches()

@@ -1,4 +1,5 @@
 using HarmonyLib;
+using JipperOverlayer.Overlayer.Util;
 
 namespace JipperOverlayer.Overlayer.Features;
 
@@ -22,9 +23,22 @@ internal static class PatchLogic
     {
         var overlay = GameLifecycleHelper.GetOverlay();
         if (overlay == null || !Main.Settings.ShowCombo) return;
-        if (hit == HitMargin.Perfect || (Main.Settings.EnableAutoCombo && hit == HitMargin.Auto))
+        // 不能直接写 HitMargin.Perfect：r150 已无该枚举值，且 PerfectMinus(3) 会与旧值静默撞号
+        int h = (int)hit;
+        bool isAuto = h == HitMarginCompat.Auto;
+        bool isMidspin = h == HitMarginCompat.Midspin;   // r149+；r148 恒为 -1 不会命中
+        if (HitMarginCompat.IsPerfectCore(h) || (Main.Settings.EnableAutoCombo && isAuto))
             overlay.UpdateCombo(++GameLifecycleHelper.ComboCount, true);
-        else if (Main.Settings.EnableAutoCombo || hit != HitMargin.Auto)
+        else if (isMidspin)
+        {
+            // r149+ 转中旋不构成玩家判定：连击既不增加也不清零（与游戏 PerfectHitMargins 语义一致）
+        }
+        else if ((h == HitMarginCompat.VeryEarly || h == HitMarginCompat.VeryLate) && Main.Settings.AllowOrangeCombo)
+        {
+            // 橙色连击原是 Jongyeol 模式专属，现拆为独立开关：普通模式下 VeryEarly/VeryLate 也可保连击
+            overlay.UpdateCombo(++GameLifecycleHelper.ComboCount, true);
+        }
+        else if (Main.Settings.EnableAutoCombo || !isAuto)
         {
             overlay.UpdateCombo(GameLifecycleHelper.ComboCount = 0, false);
             overlay.OnNonPerfectHit();
@@ -35,26 +49,37 @@ internal static class PatchLogic
     {
         var overlay = Overlay.Instance;
         if (overlay?.Jongyeol == null) return;
-        switch (hit)
+        // 原版 switch 依赖枚举常量，但 r150 的枚举取值整体位移，
+        // 因此改为按运行时解析出的语义下标判断。
+        int h = (int)hit;
+        bool isAuto = h == HitMarginCompat.Auto;
+        bool isMidspin = h == HitMarginCompat.Midspin;   // r149+；r148 恒为 -1 不会命中
+
+        if (HitMarginCompat.IsPerfectExtended(h) || (isAuto && Main.Settings.EnableAutoCombo))
         {
-            case HitMargin.Perfect:
-            case HitMargin.EarlyPerfect:
-            case HitMargin.LatePerfect:
-            case HitMargin.Auto when Main.Settings.EnableAutoCombo:
-                overlay.UpdateCombo(++GameLifecycleHelper.ComboCount, true);
-                break;
-            case HitMargin.VeryEarly:
-            case HitMargin.VeryLate:
-                if (!Main.Settings.AllowOrangeCombo) goto default;
-                overlay.UpdateCombo(++GameLifecycleHelper.ComboCount, true);
-                break;
-            case HitMargin.Auto when !Main.Settings.EnableAutoCombo:
-                break;
-            default:
-                overlay.UpdateCombo(GameLifecycleHelper.ComboCount = 0, false);
-                break;
+            overlay.UpdateCombo(++GameLifecycleHelper.ComboCount, true);
         }
-        if (hit is not HitMargin.Perfect and not HitMargin.Auto)
+        else if (h == HitMarginCompat.VeryEarly || h == HitMarginCompat.VeryLate)
+        {
+            if (Main.Settings.AllowOrangeCombo)
+                overlay.UpdateCombo(++GameLifecycleHelper.ComboCount, true);
+            else
+                overlay.UpdateCombo(GameLifecycleHelper.ComboCount = 0, false);
+        }
+        else if (isMidspin)
+        {
+            // r149+ 转中旋：保持当前连击不变
+        }
+        else if (isAuto && !Main.Settings.EnableAutoCombo)
+        {
+            // 自动播放且未开启 Auto 连击：保持当前连击不变
+        }
+        else
+        {
+            overlay.UpdateCombo(GameLifecycleHelper.ComboCount = 0, false);
+        }
+
+        if (!HitMarginCompat.IsPerfectCore(h) && !isAuto && !isMidspin)
             overlay.Jongyeol.OnNonPerfectHit();
     }
 }

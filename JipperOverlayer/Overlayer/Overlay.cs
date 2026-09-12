@@ -1,4 +1,4 @@
-﻿using JipperOverlayer.Overlayer.Jongyeol;
+using JipperOverlayer.Overlayer.Jongyeol;
 using JipperOverlayer.Overlayer.Util;
 using System;
 using System.Collections.Generic;
@@ -82,10 +82,12 @@ public class Overlay
     private static readonly IReadOnlyList<TextMeshProUGUI> _emptyTexts = Array.Empty<TextMeshProUGUI>();
     protected IReadOnlyList<TextMeshProUGUI> ExtraTexts => Jongyeol?.ExtraTexts ?? _emptyTexts;
 
-    public Overlay(bool enableJongyeol = false)
+    public Overlay()
     {
         Instance = this;
-        if (enableJongyeol) Jongyeol = new JongyeolModule(this);
+        // Jongyeol 模块常驻：它承载的扩展文本（FPS/Author/State/Death/Start/Timing）
+        // 已拆成独立开关，不再是互斥的整体模式
+        Jongyeol = new JongyeolModule(this);
         GameObject = new GameObject("JipperOverlayer Overlay");
         Canvas = GameObject.AddComponent<Canvas>();
         Canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -125,12 +127,10 @@ public class Overlay
         OverlayTextManager = VersionSafe.IsCoopMode()
             ? new OverlayTextManagerCoop(this)
             : new OverlayTextManagerNormal();
-        if (Jongyeol != null)
-        {
-            if (OverlayTextManager is OverlayTextManagerNormal normal) normal.DecimalPrecision = s.JongyeolDecimalPrecision;
-            else if (OverlayTextManager is OverlayTextManagerCoop coop) coop.DecimalPrecision = s.JongyeolDecimalPrecision;
-            Jongyeol.DecimalPrecision = s.JongyeolDecimalPrecision;
-        }
+        // 小数精度统一作用于所有文本（默认 2 位与原普通模式一致）
+        if (OverlayTextManager is OverlayTextManagerNormal normal) normal.DecimalPrecision = s.JongyeolDecimalPrecision;
+        else if (OverlayTextManager is OverlayTextManagerCoop coop) coop.DecimalPrecision = s.JongyeolDecimalPrecision;
+        Jongyeol.DecimalPrecision = s.JongyeolDecimalPrecision;
     }
 
     protected void InitializeStatus()
@@ -165,55 +165,9 @@ public class Overlay
 
     public void SetupLocationMain()
     {
-        if (Jongyeol != null) { Jongyeol.SetupLocation(); return; }
-        int y = -15;
-        var s = Main.Settings;
-        Checkpoints ??= CollectCheckpoints();
-
-        foreach (int elemId in s.GeneralDisplayOrder)
-        {
-            var elem = (DisplayElement)elemId;
-            var text = GetStackText(elem);
-            if (text == null) continue;
-            bool enabled = IsStackElementEnabled(elem, s);
-            SetupLocationMainText(text, enabled, ref y);
-        }
-
-        UpdateProgress();
-        VersionSafe.CalculatePercentAcc();
-        UpdateTime();
-    }
-
-    TextMeshProUGUI GetStackText(DisplayElement elem) => elem switch
-    {
-        DisplayElement.Progress => ProgressText,
-        DisplayElement.Accuracy => AccuracyText,
-        DisplayElement.XAccuracy => XAccuracyText,
-        DisplayElement.MusicTime => TimeText,
-        DisplayElement.MapTime => MapTimeText,
-        DisplayElement.Checkpoint => CheckpointText,
-        DisplayElement.Best => BestText,
-        _ => null,
-    };
-
-    bool IsStackElementEnabled(DisplayElement elem, Settings s) => elem switch
-    {
-        DisplayElement.Progress => s.ShowProgress,
-        DisplayElement.Accuracy => s.ShowAccuracy,
-        DisplayElement.XAccuracy => s.ShowXAccuracy,
-        DisplayElement.MusicTime => s.ShowMusicTime,
-        DisplayElement.MapTime => s.ShowMapTime,
-        DisplayElement.Checkpoint => s.ShowCheckpoint && (Checkpoints ??= CollectCheckpoints()).Length > 0,
-        DisplayElement.Best => s.ShowBest,
-        _ => false,
-    };
-
-    protected static void SetupLocationMainText(TextMeshProUGUI text, bool enabled, ref int y)
-    {
-        text.enabled = enabled;
-        if (!enabled) return;
-        text.rectTransform.anchoredPosition = new Vector2(228, y);
-        y -= 35;
+        // 统一的栈式布局：全部 13 个可栈排元素共栈、共顺序（JongyeolDisplayOrder），
+        // 未启用的元素自然跳过。原 GeneralDisplayOrder 路径与 Jongyeol 路径本就是同一布局。
+        Jongyeol.SetupLocation();
     }
 
     public void SetupLocationJudgement()
@@ -724,23 +678,25 @@ public class Overlay
 
     private static void AppendJudgementLine(StringBuilder sb, int[] h)
     {
-        sb.Append(h[9]);
+        // 全部按运行时解析的语义下标取值：r148 与 r150 的 HitMargin 取值位移不同，
+        // 直接写死下标会让判定数字整体错位（如 r150 的 h[3] 是 PerfectMinus 而非 Perfect）。
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.FailOverload));
         sb.Append(" <color=red>");
-        sb.Append(h[0]);
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.TooEarly));
         sb.Append(" <color=#FF6F4E>");
-        sb.Append(h[1]);
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.VeryEarly));
         sb.Append(" <color=#A0FF4E>");
-        sb.Append(h[2]);
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.EarlyPerfect));
         sb.Append(" <color=#60FF4E>");
-        sb.Append(h[3] + (h.Length > 10 ? h[10] : 0));
+        sb.Append(HitMarginCompat.SumCorePerfect(h) + HitMarginCompat.Get(h, HitMarginCompat.Auto));
         sb.Append("</color> ");
-        sb.Append(h[4]);
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.LatePerfect));
         sb.Append("</color> ");
-        sb.Append(h[5]);
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.VeryLate));
         sb.Append("</color> ");
-        sb.Append(h[6]);
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.TooLate));
         sb.Append("</color> ");
-        sb.Append(h[8]);
+        sb.Append(HitMarginCompat.Get(h, HitMarginCompat.FailMiss));
     }
 
     public void UpdateJudgement()
@@ -748,7 +704,8 @@ public class Overlay
         if (!GameObject.activeSelf || Hit == null) return;
         bool isCoop = VersionSafe.IsCoopMode();
         int playerCount = VersionSafe.GetPlayerCount();
-        bool useXPerfect = Main.Settings.ShowXPerfectInJudgement && XPerfectIntegration.IsAvailable;
+        // r150 基础游戏原生提供 XPerfect；r148 依赖外部 XPerfect mod
+        bool useXPerfect = Main.Settings.ShowXPerfectInJudgement && HitMarginCompat.XPerfectDisplayAvailable;
 
         if (isCoop && playerCount > 1)
         {
@@ -780,40 +737,45 @@ public class Overlay
         }
         else
         {
-            int plus = XPerfectIntegration.GetPlayerPlusPerfect(player);
-            int x = XPerfectIntegration.GetPlayerXPerfect(player);
-            int minus = XPerfectIntegration.GetPlayerMinusPerfect(player);
+            // r150 基础游戏原生统计 XPerfect/PerfectMinus/PerfectPlus；
+            // r148 无此判定，回退到外部 XPerfect mod 的计数。
+            HitMarginCompat.GetPerfectBreakdown(h, player, out int plus, out int x, out int minus);
 
             // 完全复用原版的嵌套颜色结构，仅替换绿色数字为 + X -
-            _judgementSb.Append(h[9]);                          // FailOverload (默认紫色)
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.FailOverload));
             _judgementSb.Append(" <color=red>");
-            _judgementSb.Append(h[0]);                          // TooEarly (红)
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.TooEarly));
             _judgementSb.Append(" <color=#FF6F4E>");
-            _judgementSb.Append(h[1]);                          // VeryEarly (橙)
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.VeryEarly));
             _judgementSb.Append(" <color=#A0FF4E>");
-            _judgementSb.Append(h[2]);                          // EarlyPerfect (黄绿) ← 保留
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.EarlyPerfect));
             _judgementSb.Append(" <color=#60FF4E>");
 
-            // 替换掉原 h[3]+h[10] 的绿色数字
-            _judgementSb.Append(plus);                          // +Perfect (绿)
-            _judgementSb.Append("</color> <color=#4DCCFF>");
-            _judgementSb.Append(x);                             // X-Perfect (蓝)
+            // 中心完美三分量的顺序必须与时间轴一致：稍快(-)在左、X 居中、稍慢(+)在右，
+            // 与整行 TooEarly(最左)…TooLate(最右) 的排列约定相同。
+            // r150：PerfectMinus=稍快、PerfectPlus=稍慢（SelectHitMarginByTimeBoundary 按
+            // 带符号时间差判定：负=早、正=晚）。旧代码沿袭外部 XPerfect mod 打成 plus→x→minus，
+            // 会让稍快的计数落到右侧槽位。
+            _judgementSb.Append(minus);                         // -Perfect（稍快，绿）
+            _judgementSb.Append("</color> <color=#").Append(GameCompat.XPerfectHex).Append(">");
+            _judgementSb.Append(x);                             // X-Perfect（r150 跟随游戏配色，默认白）
             _judgementSb.Append("</color> <color=#60FF4E>");
-            _judgementSb.Append(minus);                         // -Perfect (绿)
-            if (Main.Settings.ShowAutoInXPerfect && h.Length > 10 && h[10] > 0)
+            _judgementSb.Append(plus);                          // +Perfect（稍慢，绿）
+            int autoCount = HitMarginCompat.Get(h, HitMarginCompat.Auto);
+            if (Main.Settings.ShowAutoInXPerfect && autoCount > 0)
             {
                 _judgementSb.Append(" <color=#FF8000>");
-                _judgementSb.Append(h[10]);
+                _judgementSb.Append(autoCount);
                 _judgementSb.Append("</color>");
             }
             _judgementSb.Append("</color> ");                  // 关闭绿色，栈顶回到黄绿
-            _judgementSb.Append(h[4]);                          // LatePerfect (黄绿) ← 保留
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.LatePerfect));
             _judgementSb.Append("</color> ");                  // 关闭黄绿，栈顶回到橙
-            _judgementSb.Append(h[5]);                          // VeryLate (橙)
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.VeryLate));
             _judgementSb.Append("</color> ");                  // 关闭橙，栈顶回到红
-            _judgementSb.Append(h[6]);                          // TooLate (红)
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.TooLate));
             _judgementSb.Append("</color> ");                  // 关闭红，栈顶回到默认紫
-            _judgementSb.Append(h[8]);                          // FailMiss (默认紫色)
+            _judgementSb.Append(HitMarginCompat.Get(h, HitMarginCompat.FailMiss));
         }
 
         _judgementSb.Append(suffix);
@@ -822,57 +784,9 @@ public class Overlay
 
     public void UpdateTime()
     {
-        if (Jongyeol != null) { Jongyeol.UpdateTime(); return; }
-        if (!GameObject.activeSelf || IsDeath) return;
-        var s = Main.Settings;
-        bool requireMusicToMap = false;
-        if (s.ShowMusicTime)
-        {
-            var song = GameRefs.Song;
-            if (song is not AudioSource audioSrc) requireMusicToMap = true;
-            else if (audioSrc.clip == null && s.ShowMapTimeIfNotMusic) requireMusicToMap = true;
-            else
-            {
-                float time = audioSrc.time;
-                if (time < 0) time = 0;
-                var clip = audioSrc.clip;
-                float totalTime = clip != null && clip.length > 0 ? clip.length : 0;
-
-                // Fallback: when song has no clip, use map total time
-                if (totalTime <= 0)
-                {
-                    var floors = GameRefs.LevelMaker?.listFloors;
-                    if (floors != null && floors.Count > 0)
-                        totalTime = (float)floors[floors.Count - 1].entryTime;
-                }
-
-                if (LastTime == (int)time) return;
-                bool hourNeed = totalTime >= 3600;
-                MusicTimeCache ??= TimeFormatter.Format(totalTime, hourNeed);
-                string timeStr;
-                if (time == 0 && SongPlaying) timeStr = MusicTimeCache;
-                else if (time > 0) { SongPlaying = true; timeStr = TimeFormatter.Format(time, hourNeed); }
-                else timeStr = TimeFormatter.Format(time, hourNeed);
-                TimeText.text = $"{_musicTimeLabel} {timeStr}~{MusicTimeCache}";
-                LastTime = (int)time;
-                TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
-            }
-        }
-        if (s.ShowMapTime || requireMusicToMap)
-        {
-            float time = (float)(GameRefs.ConductorAddoffset + GameRefs.ConductorSongpositionMinusi);
-            var floors = GameRefs.LevelMaker?.listFloors;
-            if (floors == null || floors.Count == 0) return;
-            float totalTime = (float)floors[floors.Count - 1].entryTime;
-            if (time < 0) time = 0; else if (time > totalTime) time = totalTime;
-            if ((!s.ShowMapTime || LastMapTime == (int)time) && (!requireMusicToMap || LastTime == (int)time)) return;
-            bool hourNeed = totalTime >= 3600;
-            MapTimeCache ??= TimeFormatter.Format(totalTime, hourNeed);
-            string tStr = time == totalTime ? MapTimeCache : TimeFormatter.Format(time, hourNeed);
-            string txt = $"{_mapTimeLabel} {tStr}~{MapTimeCache}";
-            if (s.ShowMapTime) { MapTimeText.text = txt; LastMapTime = (int)time; MapTimeText.color = totalTime > 0 ? s.Colors.GetMapTimeColor(time / totalTime) : Color.white; }
-            if (requireMusicToMap) { TimeText.text = txt; LastTime = (int)time; TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white; }
-        }
+        // 统一走模块实现：它是原两份实现的超集（10fps 节流、缓存、无音频时回退地图时间），
+        // 唯一可见差异是时间显示带一位小数（FormatWithDecimals）
+        Jongyeol.UpdateTime();
     }
 
 
@@ -905,34 +819,24 @@ public class Overlay
     public Color UpdateComboColor(int combo)
     {
         var s = Main.Settings;
-        if (Jongyeol != null) return Jongyeol.UpdateComboColor(combo);
+        // Jongyeol 配色（按完美率渐变）只在开启宽松连击时接管，普通模式保持原渐变
+        if (s.AllowELCombo) return Jongyeol.UpdateComboColor(combo);
         if (combo > s.ComboColorMax) combo = s.ComboColorMax;
         return s.Colors.GetComboColor((float)combo / s.ComboColorMax);
     }
 
-    public void OnNonPerfectHit() { Jongyeol?.OnNonPerfectHit(); }
+    // 连击标题切换（COMBO → 备用文本）属于宽松连击的表现，仅在相应功能开启时生效
+    public void OnNonPerfectHit()
+    {
+        var s = Main.Settings;
+        if (s.AllowELCombo || s.AllowOrangeCombo) Jongyeol.OnNonPerfectHit();
+    }
 
     public void UpdateBPM()
     {
-        var s = Main.Settings;
-        if (Jongyeol != null) { Jongyeol.UpdateBPM(); return; }
-        if (!GameObject.activeSelf) return;
-        var floor = GameRefs.CurrentFloor ?? GameRefs.FirstFloor;
-        if (floor == null) return;
-        var bpm = BpmCalculator.Calculate(floor, (float)(GameRefs.SongPitch * VersionSafe.GetPlanetSpeed(GameRefs.ControllerInstance)));
-
-        // 判定时间窗：并入 BPM 多行文本，复用 BPM 的字体/字号/对齐/位置/行距。
-        var tw = s.ShowTimingWindow ? TimingWindowCalculator.Calculate(floor) : default;
-        bool twValid = s.ShowTimingWindow && tw.Valid;
-        bool twChanged = twValid && TimingWindowChanged(tw);
-
-        if (LastTileBpm == bpm.TileBpm && LastCurBpm == bpm.CurrentBpm && !twChanged) return;
-        string hex = s.Colors.GetBpmHex(bpm.TileBpm / s.BpmColorMax, true);
-        string text = BuildBpmText(s.BpmLineOrder, hex, s, bpm.TileBpm, bpm.CurrentBpm, bpm.Kps);
-        if (twValid) text += BuildTimingWindowLines(tw);
-        BPMText.text = text;
-        if (LastCurBpm != bpm.CurrentBpm) BPMText.color = s.Colors.GetBpmColor(bpm.CurrentBpm / s.BpmColorMax);
-        LastTileBpm = bpm.TileBpm; LastCurBpm = bpm.CurrentBpm;
+        // 统一走模块实现：它是普通版的重集——CheckPseudo 关闭时输出与普通版一致，
+        // 开启时附加伪 BPM 检测与 KPS 着色
+        Jongyeol.UpdateBPM();
     }
 
     /// <summary>判定时间窗显示值（整毫秒）是否变化；变化时记录新值。按显示值比较，显示未变就不触发 TMP 重建。</summary>
@@ -951,7 +855,7 @@ public class Overlay
         var s = Main.Settings;
         _twSb.Clear();
         if (tw.XPerfectValid)
-            _twSb.Append("\n<color=#4DCCFF>").Append(s.Labels.XPerfectLabel).Append("</color> | ±").Append(Math.Round(tw.XPerfectMs)).Append("ms");
+            _twSb.Append("\n<color=#").Append(GameCompat.XPerfectHex).Append(">").Append(s.Labels.XPerfectLabel).Append("</color> | ±").Append(Math.Round(tw.XPerfectMs)).Append("ms");
         _twSb.Append("\n<color=#60FF4E>").Append(s.Labels.PerfectLabel).Append("</color> | ±").Append(Math.Round(tw.PerfectMs)).Append("ms");
         _twSb.Append("\n<color=#A0FF4E>").Append(s.Labels.GreatLabel).Append("</color> | ±").Append(Math.Round(tw.GreatMs)).Append("ms");
         _twSb.Append("\n<color=#FF6F4E>").Append(s.Labels.GoodLabel).Append("</color> | ±").Append(Math.Round(tw.GoodMs)).Append("ms");
@@ -1105,7 +1009,10 @@ public class Overlay
         if (_mono) _mono.enabled = true;
         SongPlaying = false; IsDeath = false;
 
-        if (s.ShowProgress || s.ShowMusicTime || s.ShowCheckpoint || s.ShowBest || Jongyeol != null)
+        // 任意可栈排元素开启即需要布局（原条件漏了 Accuracy/XAccuracy/MapTime，
+        // 只开精度时栈不会被摆位——顺手修正）
+        if (s.ShowProgress || s.ShowAccuracy || s.ShowXAccuracy || s.ShowMusicTime || s.ShowMapTime ||
+            s.ShowCheckpoint || s.ShowBest || s.JongyeolStyleActive)
             SetupLocationMain();
         OverlayTextManager.SeedProgress(StartProgress);
         if (s.ShowProgress || s.ShowProgressBar || s.ShowBest)

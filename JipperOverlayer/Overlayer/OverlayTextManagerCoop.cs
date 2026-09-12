@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using JipperOverlayer.Overlayer.Util;
 using UnityEngine;
 
 namespace JipperOverlayer.Overlayer;
@@ -184,7 +185,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         for (int i = 0; i < count; i++)
         {
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
-            int death = hits[8] + hits[9];
+            // 死亡数 = FailMiss + FailOverload（r150 下标为 10/11）
+            int death = HitMarginCompat.Get(hits, HitMarginCompat.FailMiss) + HitMarginCompat.Get(hits, HitMarginCompat.FailOverload);
             _playerDeath[i] = death;
             if (_lastPlayerDeath[i] != death) { _lastPlayerDeath[i] = death; changed = true; }
             string hex = VersionSafe.GetPlayerColorHex(i);
@@ -246,10 +248,10 @@ public class OverlayTextManagerCoop : IOverlayTextManager
                 state = labels.StatePerfectPlay;
             else
             {
-                int death = hits[8] + hits[9];
+                int death = HitMarginCompat.Get(hits, HitMarginCompat.FailMiss) + HitMarginCompat.Get(hits, HitMarginCompat.FailOverload);
                 if (death != 0) state = labels.StateComplete;
-                else if (hits[0] != 0) state = labels.StateClear;
-                else if (hits[1] != 0 || hits[5] != 0) state = labels.StateNoMiss;
+                else if (HitMarginCompat.Get(hits, HitMarginCompat.TooEarly) != 0) state = labels.StateClear;
+                else if (HitMarginCompat.Get(hits, HitMarginCompat.VeryEarly) != 0 || HitMarginCompat.Get(hits, HitMarginCompat.VeryLate) != 0) state = labels.StateNoMiss;
                 else state = labels.StatePerfectionist;
             }
         }
@@ -259,27 +261,15 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         return state;
     }
 
-    private static bool IsPurePerfect(int[] hits)
-    {
-        for (int i = 0; i < hits.Length && i < 10; i++)
-        {
-            if (i is 3 or 7) continue;
-            if (hits[i] != 0) return false;
-        }
-        return true;
-    }
+    private static bool IsPurePerfect(int[] hits) => HitMarginCompat.IsPurePerfect(hits);
 
     public bool CheckPurePerfect(Overlay overlay)
     {
         int count = VersionSafe.GetPlayerCount();
         for (int p = 0; p < count; p++)
         {
-            int[] hits = VersionSafe.GetHitMarginsCountForPlayer(p);
-            for (int i = 0; i < hits.Length && i < 10; i++)
-            {
-                if (i is 3 or 7) continue;
-                if (hits[i] != 0) return false;
-            }
+            if (!HitMarginCompat.IsPurePerfect(VersionSafe.GetHitMarginsCountForPlayer(p)))
+                return false;
         }
         return true;
     }
@@ -291,7 +281,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         for (int i = 0; i < count; i++)
         {
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
-            total += hits[0] + hits[6];
+            // “Too” 判定数 = TooEarly + TooLate（r150 下标为 0/8）
+            total += HitMarginCompat.Get(hits, HitMarginCompat.TooEarly) + HitMarginCompat.Get(hits, HitMarginCompat.TooLate);
         }
         return total;
     }

@@ -115,7 +115,7 @@ public static class Main
 
     private static void CreateOverlay()
     {
-        _overlay = new Overlay(Settings.JongyeolMode);
+        _overlay = new Overlay();
     }
 
     public static void RecreateOverlay()
@@ -153,7 +153,7 @@ public static class Main
     private static void OnUpdate(float deltaTime)
     {
         XPerfectIntegration.EnsureInitialized();
-        if (Settings.JongyeolMode)
+        if (Settings.ShowFPS)
             try { _overlay?.Jongyeol?.UpdateFPS(deltaTime); }
             catch { }
     }

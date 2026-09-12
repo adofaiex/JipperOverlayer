@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 namespace JipperOverlayer.Overlayer.Util;
@@ -55,7 +55,7 @@ internal static class TimingWindowCalculator
 		int difficulty = (int)GCS.difficulty;
 		float speedTrial = GCS.currentSpeedTrial;
 		float counted = GCS.HITMARGIN_COUNTED;
-		bool xp = XPerfectIntegration.IsAvailable;
+		bool xp = HitMarginCompat.XPerfectDisplayAvailable;
 
 		if (bpmTimesSpeed == _cacheBpm && conductorPitch == _cachePitch && marginScale == _cacheMargin &&
 			difficulty == _cacheDifficulty && speedTrial == _cacheSpeedTrial && counted == _cacheCounted && xp == _cacheXp)
@@ -66,15 +66,42 @@ internal static class TimingWindowCalculator
 
 		try
 		{
-			float perfectMs = AngleToMs(scrMisc.GetAdjustedAngleBoundaryInDeg(HitMarginGeneral.Pure, bpmTimesSpeed, conductorPitch, marginScale), denom);
-			float greatMs = AngleToMs(scrMisc.GetAdjustedAngleBoundaryInDeg(HitMarginGeneral.Perfect, bpmTimesSpeed, conductorPitch, marginScale), denom);
-			float goodMs = AngleToMs(scrMisc.GetAdjustedAngleBoundaryInDeg(HitMarginGeneral.Counted, bpmTimesSpeed, conductorPitch, marginScale), denom);
+			// r148: static double GetAdjustedAngleBoundaryInDeg(HitMarginGeneral, double, double, double)
+			// r150: static 结构体 GetAdjustedAngleBoundaryInDeg(Difficulty, double, double, double)
+			// 首参与返回类型同时变化，直接调用在另一版本会 MissingMethodException（被 catch 吞掉后
+			// 表现为判定时间窗静默消失），因此统一走 GameCompat 的运行时签名探测。
+			if (!GameCompat.TryGetAngleBoundaries(bpmTimesSpeed, conductorPitch, marginScale,
+					out double countedDeg, out double perfectDeg, out double pureDeg, out double xPerfectDeg))
+			{
+				// 探测/调用失败不写缓存，每帧都会重试——沿用原有的只警告一次机制
+				if (!_warned) { _warned = true; Loader.Warning("TimingWindow: GetAdjustedAngleBoundaryInDeg 不可用，判定时间窗停用"); }
+				return default;
+			}
+
+			float perfectMs = AngleToMs(pureDeg, denom);      // Pure 边界 → Perfect 档
+			float greatMs = AngleToMs(perfectDeg, denom);     // Perfect 边界 → Great 档
+			float goodMs = AngleToMs(countedDeg, denom);      // Counted 边界 → Good 档
 
 			float xPerfectMs = 0f;
 			bool xPerfectValid = false;
-			// 大 p 边界是确定公式；仅当 XPerfect 已安装并启用时展示
-			if (xp)
+			if (HitMarginCompat.HasNativeXPerfect)
 			{
+				// r150 热修（2026-09-11 晚）后的 XPerfect 语义：与普通判定边界一致——
+				// XPerfect = Max(12.5° × marginMult, deg(16.67ms × pitch))，
+				// 随判定倍率放大、下限换算用真实 pitch；初版 r150 的「绝对时间指标」设计
+				// （不乘倍率、pitch 写死 1.0、27.5ms 封顶）已被官方撤销，且两路径不一致
+				// 一并修复（useAbsoluteTime 被移除，角度/时间路径严格互逆）。
+				// 有效窗口 = max(16.67ms, 4166.67·m/(bpm·pitch) ms)，低 BPM 下比初版更宽。
+				// 本 mod 直接读游戏函数返回值，公式变化自动跟随，无需改代码。
+				if (xPerfectDeg > 0.0)
+				{
+					xPerfectMs = AngleToMs(xPerfectDeg, denom);
+					xPerfectValid = xPerfectMs > 0;
+				}
+			}
+			else if (xp)
+			{
+				// r148：外部 XPerfect mod，大 p 边界是确定公式；仅当已安装并启用时展示
 				double xBoundaryDeg = XPerfectBoundaryDeg(bpmTimesSpeed, conductorPitch, marginScale);
 				xPerfectMs = AngleToMs(xBoundaryDeg, denom);
 				xPerfectValid = xPerfectMs > 0;

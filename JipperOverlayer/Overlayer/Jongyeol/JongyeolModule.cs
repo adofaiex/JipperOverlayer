@@ -6,6 +6,11 @@ using UnityEngine;
 
 namespace JipperOverlayer.Overlayer.Jongyeol;
 
+// 原「Jongyeol 模式」的承载模块。总开关移除后它常驻运行，负责：
+//   1. 六个扩展文本（FPS/Author/State/Death/Start/Timing）的创建、布局与更新
+//   2. 统一的栈式布局（全部 13 个可栈排元素，顺序见 Settings.JongyeolDisplayOrder）
+//   3. BPM（含伪 BPM 检测）与时间文本的统一更新实现
+// 各功能由独立设置开关控制，可与普通模式任意搭配。
 public class JongyeolModule
 {
     private readonly Overlay _overlay;
@@ -189,6 +194,8 @@ public class JongyeolModule
     {
         var s = Main.Settings;
         if (!s.ShowTiming || !_overlay.GameObject.activeSelf) return;
+        // 自愈：补丁无条件挂载后，首次命中可能早于 SetupLocation 的初始化
+        _timings ??= [];
         if (_timings.Count >= 5000)
         {
             for (int i = 0; i < 1000; i++) _timingsSum -= _timings[i];
@@ -221,6 +228,12 @@ public class JongyeolModule
     }
 
     // ===== Overridden Update Methods =====
+
+    // 时间格式跟随独立开关：TimeDecimals 决定是否带一位小数（原 Jongyeol 模式行为）
+    private static string FmtTime(float time, bool hour)
+        => Main.Settings.TimeDecimals
+            ? TimeFormatter.FormatWithDecimals(time, hour)
+            : TimeFormatter.Format(time, hour);
 
     public void UpdateTime()
     {
@@ -255,14 +268,14 @@ public class JongyeolModule
                 _lastMusicTimeTick = curTick;
 
                 bool hourNeed = totalTime >= 3600;
-                _overlay.MusicTimeCache ??= TimeFormatter.FormatWithDecimals(totalTime, hourNeed);
+                _overlay.MusicTimeCache ??= FmtTime(totalTime, hourNeed);
 
                 if (time > 0) _overlay.SongPlaying = true;
                 else if (time == 0 && _overlay.SongPlaying) time = totalTime;
 
                 string timeStr = time == 0 && _overlay.SongPlaying
                     ? _overlay.MusicTimeCache
-                    : TimeFormatter.FormatWithDecimals(time, hourNeed);
+                    : FmtTime(time, hourNeed);
 
                 _overlay.TimeText.text = $"{_overlay._musicTimeLabel} {timeStr}~{_overlay.MusicTimeCache}";
                 _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
@@ -280,8 +293,8 @@ public class JongyeolModule
             else if (time > totalTime) time = totalTime;
             if (!s.ShowMapTime && !requireMusicToMap) return;
             bool hourNeed = totalTime >= 3600;
-            _overlay.MapTimeCache ??= TimeFormatter.FormatWithDecimals(totalTime, hourNeed);
-            string timeStr = time == totalTime ? _overlay.MapTimeCache : TimeFormatter.FormatWithDecimals(time, hourNeed);
+            _overlay.MapTimeCache ??= FmtTime(totalTime, hourNeed);
+            string timeStr = time == totalTime ? _overlay.MapTimeCache : FmtTime(time, hourNeed);
             string text = $"{_overlay._mapTimeLabel} {timeStr}~{_overlay.MapTimeCache}";
             if (s.ShowMapTime) { _overlay.MapTimeText.text = text; _overlay.MapTimeText.color = totalTime > 0 ? s.Colors.GetMapTimeColor(time / totalTime) : Color.white; }
             if (requireMusicToMap) { _overlay.TimeText.text = text; _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white; }

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Xml.Serialization;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using JipperOverlayer.Overlayer;
 using JipperOverlayer.Overlayer.Features;
@@ -25,9 +26,17 @@ public class Settings
     public bool JudgementLocationUp, EnableAutoCombo = true;
     public float BpmColorMax = 8000f;
     public int ComboColorMax = 1000;
-    public bool JongyeolMode, ShowFPS = true, ShowAuthor = true, ShowState = true;
+    public bool ShowFPS = true, ShowAuthor = true, ShowState = true;
+    // 原 Jongyeol 模式的文本样式差异，拆成独立开关：
+    //   DetailedProgress —— 进度显示「当前/总数 [-剩余] (%)」富格式（否则只显示百分比）
+    //   TimeDecimals     —— 音乐/地图时间带一位小数
+    public bool DetailedProgress, TimeDecimals;
+
+    /// <summary>任一 Jongyeol 扩展文本开启。拆掉总开关后，用它决定「Jongyeol 风格」的连带表现
+    /// （富格式进度文本、扩展文本的小数精度等），避免普通模式用户被动接受这些变化。</summary>
+    public bool JongyeolStyleActive => ShowFPS || ShowAuthor || ShowState || ShowDeath || ShowStart || ShowTiming;
     public float FPSRefreshRate = 0.2f;
-    public int JongyeolDecimalPrecision = 5;
+    public int JongyeolDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
     public bool RemoveNotRequireInAuto = true, CheckPseudo = true, AllowELCombo = true, AllowOrangeCombo = true;
     public bool PatchBetaWatermark = true, PatchLevelName = true, RepositionAutoText = true;
@@ -136,7 +145,7 @@ public class Settings
     public int ConfigVersion;
     public bool ShowXPerfectInJudgement;
     public bool ShowAutoInXPerfect;
-    public int[] GeneralDisplayOrder = [0, 1, 2, 3, 4, 5, 6];
+    // 统一后的唯一显示顺序（原 GeneralDisplayOrder 已并入：两个模式本就是同一个栈式布局）
     public int[] JongyeolDisplayOrder = [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15];
     public int[] BpmLineOrder = [0, 1, 2];
     public bool[] BpmLineVisibility = [true, true, true];
@@ -150,7 +159,6 @@ public class Settings
     {
         DrawGeneralSection();
         DrawDisplaySection();
-        DrawJongyeolSection();
         DrawTextSettings();
         DrawTextEffectsSection();
         DrawLabelsSection();
@@ -245,8 +253,14 @@ public class Settings
         DrawDisplaySub("progress", Tr.Get(Tr.Key.ProgressAccuracy), () =>
         {
             ShowProgress = Tog(Tr.Get(Tr.Key.ShowProgress), ShowProgress);
-            if (ShowProgress) Colors.Progress.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateProgress()), Tr.Get(Tr.Key.ProgressColor),
-                () => { Colors.Progress = new([(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]); Colors.Save(); });
+            if (ShowProgress)
+            {
+                bool prevDetail = DetailedProgress;
+                DetailedProgress = Tog(Tr.Get(Tr.Key.DetailedProgress), DetailedProgress);
+                if (prevDetail != DetailedProgress) Overlayer.Overlay.Instance?.UpdateProgress();
+                Colors.Progress.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateProgress()), Tr.Get(Tr.Key.ProgressColor),
+                    () => { Colors.Progress = new([(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]); Colors.Save(); });
+            }
 
             ShowAccuracy = Tog(Tr.Get(Tr.Key.ShowAccuracy), ShowAccuracy);
             if (ShowAccuracy) Colors.Accuracy.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.AccuracyColor),
@@ -268,6 +282,14 @@ public class Settings
                 () => { Colors.MapTime = new([(1f, Color.white)]); Colors.Save(); });
 
             ShowMapTimeIfNotMusic = Tog(Tr.Get(Tr.Key.ShowMapIfNo), ShowMapTimeIfNotMusic);
+            bool prevDec = TimeDecimals;
+            TimeDecimals = Tog(Tr.Get(Tr.Key.TimeDecimals), TimeDecimals);
+            if (prevDec != TimeDecimals)
+            {
+                // 时间格式切换后必须作废已缓存的格式化总时长，否则缓存还是旧格式
+                var o = Overlayer.Overlay.Instance;
+                if (o != null) { o.MusicTimeCache = null; o.MapTimeCache = null; o.UpdateTime(); }
+            }
         });
 
         DrawDisplaySub("progbar", Tr.Get(Tr.Key.ProgressBarBest), () =>
@@ -328,21 +350,126 @@ public class Settings
         {
             ShowJudgement = Tog(Tr.Get(Tr.Key.ShowJudgement), ShowJudgement);
             if (ShowJudgement) JudgementLocationUp = Tog(Tr.Get(Tr.Key.JudgementUp), JudgementLocationUp);
-            if (XPerfectIntegration.IsAvailable && ShowJudgement) ShowXPerfectInJudgement = Tog(Tr.Get(Tr.Key.ShowXPerfectInJudgement), ShowXPerfectInJudgement);
-            if (XPerfectIntegration.IsAvailable && ShowJudgement && ShowXPerfectInJudgement) ShowAutoInXPerfect = Tog(Tr.Get(Tr.Key.ShowAutoInXPerfect), ShowAutoInXPerfect);
+            // r150 基础游戏原生支持 XPerfect，r148 依赖外部 XPerfect mod——两种来源都允许显示开关
+            if (HitMarginCompat.XPerfectDisplayAvailable && ShowJudgement) ShowXPerfectInJudgement = Tog(Tr.Get(Tr.Key.ShowXPerfectInJudgement), ShowXPerfectInJudgement);
+            if (HitMarginCompat.XPerfectDisplayAvailable && ShowJudgement && ShowXPerfectInJudgement) ShowAutoInXPerfect = Tog(Tr.Get(Tr.Key.ShowAutoInXPerfect), ShowAutoInXPerfect);
             ShowTimingScale = Tog(Tr.Get(Tr.Key.ShowTimingScale), ShowTimingScale);
             ShowAttempt = Tog(Tr.Get(Tr.Key.ShowAttempt), ShowAttempt);
             ShowFullAttempt = Tog(Tr.Get(Tr.Key.ShowFullAttempt), ShowFullAttempt);
             DrawAttemptLineOrder();
         });
 
+        // ==== 扩展文本（原 Jongyeol 分区并入：与 progress/time 等同为独立显示类型） ====
+        DrawDisplaySub("jDisplay", Tr.Get(Tr.Key.DisplayOptions), () =>
+        {
+            ShowFPS = TogR(Tr.Key.ShowFps, ShowFPS);
+            if (ShowFPS)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(36);
+                FPSRefreshRate = Slide(Tr.Get(Tr.Key.FPSRefreshRate), FPSRefreshRate, 0.05f, 1f, () => { });
+                GUILayout.EndHorizontal();
+                DrawJColorFoldout("jFps", Tr.Get(Tr.Key.FpsColor), Colors.JFps,
+                    () => { Colors.JFps = new(Color.white); Colors.Save(); });
+            }
+            ShowAuthor = TogR(Tr.Key.ShowAuthor, ShowAuthor);
+            if (ShowAuthor) DrawJColorFoldout("jAuthor", Tr.Get(Tr.Key.AuthorColor), Colors.JAuthor,
+                () => { Colors.JAuthor = new(Color.white); Colors.Save(); });
+            ShowState = TogR(Tr.Key.ShowState, ShowState);
+            if (ShowState)
+            {
+                DrawJColorFoldout("jStWaiting", Tr.Get(Tr.Key.StateDefaultColor), Colors.JStateWaiting,
+                    () => { Colors.JStateWaiting = new(Color.white); Colors.Save(); });
+                DrawJColorFoldout("jStAutoTile", Tr.Get(Tr.Key.StateAutoTileColor), Colors.JStateAutoTile,
+                    () => { Colors.JStateAutoTile = new(new Color(1, 0.5f, 0)); Colors.Save(); });
+                DrawJColorFoldout("jStAuto", Tr.Get(Tr.Key.StateAutoColor), Colors.JStateAuto,
+                    () => { Colors.JStateAuto = new(new Color(0.1058824f, 1f, 0)); Colors.Save(); });
+                DrawJColorFoldout("jStPerfect", Tr.Get(Tr.Key.StatePerfectColor), Colors.JStatePerfectPlay,
+                    () => { Colors.JStatePerfectPlay = new(new Color(1, 0.8549f, 0)); Colors.Save(); });
+                DrawJColorFoldout("jStComplete", Tr.Get(Tr.Key.StateCompleteColor), Colors.JStateComplete,
+                    () => { Colors.JStateComplete = new(Color.white); Colors.Save(); });
+                DrawJColorFoldout("jStClear", Tr.Get(Tr.Key.StateClearColor), Colors.JStateClear,
+                    () => { Colors.JStateClear = new(Color.white); Colors.Save(); });
+                DrawJColorFoldout("jStNoMiss", Tr.Get(Tr.Key.StateNoMissColor), Colors.JStateNoMiss,
+                    () => { Colors.JStateNoMiss = new(Color.white); Colors.Save(); });
+                DrawJColorFoldout("jStPerf", Tr.Get(Tr.Key.StatePerfectionistColor), Colors.JStatePerfectionist,
+                    () => { Colors.JStatePerfectionist = new(Color.white); Colors.Save(); });
+            }
+            ShowDeath = TogR(Tr.Key.ShowDeath, ShowDeath);
+            if (ShowDeath) Colors.JDeath.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateProgress()), Tr.Get(Tr.Key.DeathColor),
+                () => { Colors.JDeath = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
+            ShowStart = TogR(Tr.Key.ShowStart, ShowStart);
+            if (ShowStart) DrawJColorFoldout("jStart", Tr.Get(Tr.Key.StartColor), Colors.JStart,
+                () => { Colors.JStart = new(Color.white); Colors.Save(); });
+            ShowTiming = TogR(Tr.Key.ShowTiming, ShowTiming);
+            if (ShowTiming) Colors.JTiming.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateTime()), Tr.Get(Tr.Key.TimingColor),
+                () => { Colors.JTiming = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Tr.Get(Tr.Key.DecimalPrecision), GUILayout.Width(120));
+            JongyeolDecimalPrecision = (int)GUILayout.HorizontalSlider(JongyeolDecimalPrecision, 0, 5);
+            if (!_slideFields.TryGetValue("DecimalPrecision", out var dpText))
+                _slideFields["DecimalPrecision"] = dpText = JongyeolDecimalPrecision.ToString();
+            string newDpText = GUILayout.TextField(dpText, GUILayout.Width(55));
+            if (newDpText != dpText)
+            {
+                _slideFields["DecimalPrecision"] = newDpText;
+                if (int.TryParse(newDpText, out int dpParsed))
+                    JongyeolDecimalPrecision = Mathf.Clamp(dpParsed, 0, 5);
+            }
+            else if (newDpText == dpText && JongyeolDecimalPrecision.ToString() != dpText)
+                _slideFields["DecimalPrecision"] = JongyeolDecimalPrecision.ToString();
+            GUILayout.EndHorizontal();
+            var o = Overlay.Instance;
+            // 小数精度统一作用于所有文本（默认 2 位 = 原普通模式观感，滑条即改）
+            if (o?.OverlayTextManager is OverlayTextManagerNormal n) n.DecimalPrecision = JongyeolDecimalPrecision;
+            else if (o?.OverlayTextManager is OverlayTextManagerCoop c) c.DecimalPrecision = JongyeolDecimalPrecision;
+            if (o?.Jongyeol != null) o.Jongyeol.DecimalPrecision = JongyeolDecimalPrecision;
+        });
+
+        DrawDisplaySub("jBehavior", Tr.Get(Tr.Key.BehaviorOptions), () =>
+        {
+            bool prevHide = HideDebugText;
+            HideDebugText = Tog(Tr.Get(Tr.Key.HideDebugText), HideDebugText);
+            if (prevHide != HideDebugText) PatchManager.RefreshPatches();
+            RemoveNotRequireInAuto = Tog(Tr.Get(Tr.Key.RemoveAutoReq), RemoveNotRequireInAuto);
+            CheckPseudo = Tog(Tr.Get(Tr.Key.CheckPseudo), CheckPseudo);
+            bool prevEL = AllowELCombo;
+            AllowELCombo = Tog(Tr.Get(Tr.Key.AllowELCombo), AllowELCombo);
+            if (prevEL != AllowELCombo) { PatchManager.RefreshPatches(); if (!AllowELCombo) AllowOrangeCombo = false; }
+            if (AllowELCombo)
+            {
+                AllowOrangeCombo = Tog(Tr.Get(Tr.Key.AllowOrangeCombo), AllowOrangeCombo, 20);
+                Colors.JCombo.SettingGUI(ColorChanged(null), Tr.Get(Tr.Key.JComboColor),
+                    () => { Colors.JCombo = new([(0f, Color.red), (0.2f, new Color(0.9882f, 1, 0.302f)), (1f, new Color(0.3725f, 1, 0.3119f))]); Colors.Save(); });
+            }
+        });
+
         GUILayout.Space(5);
-        DrawOrderSection("generalOrder", GeneralDisplayOrder, false);
+        // 显示顺序：全部 13 个可栈排元素共栈共顺序（总开关移除后两套顺序合一）
+        DrawOrderSection("stackOrder", JongyeolDisplayOrder, true);
 
         GUILayout.Space(3);
         PatchBetaWatermark = Tog(Tr.Get(Tr.Key.PatchBetaWatermark), PatchBetaWatermark);
         PatchLevelName = Tog(Tr.Get(Tr.Key.PatchLevelName), PatchLevelName);
+        bool prevRepos = RepositionAutoText;
         RepositionAutoText = Tog(Tr.Get(Tr.Key.RepositionAutoText), RepositionAutoText);
+        if (prevRepos != RepositionAutoText) PatchManager.RefreshPatches();
+    }
+
+    /// <summary>带重排的开关：变化时刷新补丁与栈布局。
+    /// 这些开关门控着 Harmony 补丁（Timing 取数、State 联动、调试文本等），
+    /// 注册时的开关状态决定补丁是否挂载，切换后必须 RefreshPatches 才会生效。</summary>
+    bool TogR(Tr.Key key, bool value)
+    {
+        bool old = value;
+        bool nv = Tog(Tr.Get(key), value);
+        if (nv != old)
+        {
+            PatchManager.RefreshPatches();
+            var o = Overlay.Instance;
+            if (o != null) { o.SetupLocationMain(); o.RefreshVisibility(); }
+        }
+        return nv;
     }
 
     void DrawDisplaySub(string key, string label, Action content)
@@ -410,7 +537,7 @@ public class Settings
         if (GUILayout.Button(Tr.Get(Tr.Key.ResetOrder), GUILayout.ExpandWidth(false)))
         {
             list.Clear();
-            list.AddRange(isJongyeol ? GetDefaultJongyeolOrder() : GetDefaultGeneralOrder());
+            list.AddRange(GetDefaultJongyeolOrder());
             changed = true;
         }
 
@@ -419,16 +546,13 @@ public class Settings
 
         if (changed)
         {
-            var newArr = list.ToArray();
-            if (isJongyeol) JongyeolDisplayOrder = newArr;
-            else GeneralDisplayOrder = newArr;
+            JongyeolDisplayOrder = list.ToArray();
             Save();
             var o = Overlay.Instance;
             if (o != null) { o.SetupLocationMain(); o.RefreshVisibility(); }
         }
     }
 
-    static int[] GetDefaultGeneralOrder() => [0, 1, 2, 3, 4, 5, 6];
     static int[] GetDefaultJongyeolOrder() => [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15];
 
     static string GetElementName(DisplayElement elem) => elem switch
@@ -639,94 +763,6 @@ public class Settings
         GUILayout.EndHorizontal();
         bool changed = cc.SettingGUI(label, Color.black);
         return changed;
-    }
-
-    void DrawJongyeolSection()
-    {
-        bool prevJongyeol = JongyeolMode;
-        JongyeolMode = Tog(Tr.Get(Tr.Key.JongyeolMode), JongyeolMode);
-        if (JongyeolMode != prevJongyeol) { Main.RecreateOverlay(); PatchManager.RefreshPatches(); }
-        if (!JongyeolMode) return;
-
-        DrawDisplaySub("jDisplay", Tr.Get(Tr.Key.DisplayOptions), () =>
-        {
-            ShowFPS = Tog(Tr.Get(Tr.Key.ShowFps), ShowFPS);
-            if (ShowFPS)
-            {
-                GUILayout.BeginHorizontal();
-                GUILayout.Space(36);
-                FPSRefreshRate = Slide(Tr.Get(Tr.Key.FPSRefreshRate), FPSRefreshRate, 0.05f, 1f, () => { });
-                GUILayout.EndHorizontal();
-                DrawJColorFoldout("jFps", Tr.Get(Tr.Key.FpsColor), Colors.JFps,
-                    () => { Colors.JFps = new(Color.white); Colors.Save(); });
-            }
-            ShowAuthor = Tog(Tr.Get(Tr.Key.ShowAuthor), ShowAuthor);
-            if (ShowAuthor) DrawJColorFoldout("jAuthor", Tr.Get(Tr.Key.AuthorColor), Colors.JAuthor,
-                () => { Colors.JAuthor = new(Color.white); Colors.Save(); });
-            ShowState = Tog(Tr.Get(Tr.Key.ShowState), ShowState);
-            if (ShowState)
-            {
-                DrawJColorFoldout("jStWaiting", Tr.Get(Tr.Key.StateDefaultColor), Colors.JStateWaiting,
-                    () => { Colors.JStateWaiting = new(Color.white); Colors.Save(); });
-                DrawJColorFoldout("jStAutoTile", Tr.Get(Tr.Key.StateAutoTileColor), Colors.JStateAutoTile,
-                    () => { Colors.JStateAutoTile = new(new Color(1, 0.5f, 0)); Colors.Save(); });
-                DrawJColorFoldout("jStAuto", Tr.Get(Tr.Key.StateAutoColor), Colors.JStateAuto,
-                    () => { Colors.JStateAuto = new(new Color(0.1058824f, 1f, 0)); Colors.Save(); });
-                DrawJColorFoldout("jStPerfect", Tr.Get(Tr.Key.StatePerfectColor), Colors.JStatePerfectPlay,
-                    () => { Colors.JStatePerfectPlay = new(new Color(1, 0.8549f, 0)); Colors.Save(); });
-                DrawJColorFoldout("jStComplete", Tr.Get(Tr.Key.StateCompleteColor), Colors.JStateComplete,
-                    () => { Colors.JStateComplete = new(Color.white); Colors.Save(); });
-                DrawJColorFoldout("jStClear", Tr.Get(Tr.Key.StateClearColor), Colors.JStateClear,
-                    () => { Colors.JStateClear = new(Color.white); Colors.Save(); });
-                DrawJColorFoldout("jStNoMiss", Tr.Get(Tr.Key.StateNoMissColor), Colors.JStateNoMiss,
-                    () => { Colors.JStateNoMiss = new(Color.white); Colors.Save(); });
-                DrawJColorFoldout("jStPerf", Tr.Get(Tr.Key.StatePerfectionistColor), Colors.JStatePerfectionist,
-                    () => { Colors.JStatePerfectionist = new(Color.white); Colors.Save(); });
-            }
-            ShowDeath = Tog(Tr.Get(Tr.Key.ShowDeath), ShowDeath);
-            if (ShowDeath) Colors.JDeath.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateProgress()), Tr.Get(Tr.Key.DeathColor),
-                () => { Colors.JDeath = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
-            ShowStart = Tog(Tr.Get(Tr.Key.ShowStart), ShowStart);
-            if (ShowStart) DrawJColorFoldout("jStart", Tr.Get(Tr.Key.StartColor), Colors.JStart,
-                () => { Colors.JStart = new(Color.white); Colors.Save(); });
-            ShowTiming = Tog(Tr.Get(Tr.Key.ShowTiming), ShowTiming);
-            if (ShowTiming) Colors.JTiming.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateTime()), Tr.Get(Tr.Key.TimingColor),
-                () => { Colors.JTiming = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
-            Colors.JCombo.SettingGUI(ColorChanged(null), Tr.Get(Tr.Key.JComboColor),
-                () => { Colors.JCombo = new([(0f, Color.red), (0.2f, new Color(0.9882f, 1, 0.302f)), (1f, new Color(0.3725f, 1, 0.3119f))]); Colors.Save(); });
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(Tr.Get(Tr.Key.DecimalPrecision), GUILayout.Width(120));
-            JongyeolDecimalPrecision = (int)GUILayout.HorizontalSlider(JongyeolDecimalPrecision, 0, 5);
-            if (!_slideFields.TryGetValue("DecimalPrecision", out var dpText))
-                _slideFields["DecimalPrecision"] = dpText = JongyeolDecimalPrecision.ToString();
-            string newDpText = GUILayout.TextField(dpText, GUILayout.Width(55));
-            if (newDpText != dpText)
-            {
-                _slideFields["DecimalPrecision"] = newDpText;
-                if (int.TryParse(newDpText, out int dpParsed))
-                    JongyeolDecimalPrecision = Mathf.Clamp(dpParsed, 0, 5);
-            }
-            else if (newDpText == dpText && JongyeolDecimalPrecision.ToString() != dpText)
-                _slideFields["DecimalPrecision"] = JongyeolDecimalPrecision.ToString();
-            GUILayout.EndHorizontal();
-            var o = Overlay.Instance;
-            if (o?.OverlayTextManager is OverlayTextManagerNormal n) n.DecimalPrecision = JongyeolDecimalPrecision;
-            else if (o?.OverlayTextManager is OverlayTextManagerCoop c) c.DecimalPrecision = JongyeolDecimalPrecision;
-            if (o?.Jongyeol != null) o.Jongyeol.DecimalPrecision = JongyeolDecimalPrecision;
-            GUILayout.Space(3);
-            DrawOrderSection("jOrder", JongyeolDisplayOrder, true);
-        });
-
-        DrawDisplaySub("jBehavior", Tr.Get(Tr.Key.BehaviorOptions), () =>
-        {
-            HideDebugText = Tog(Tr.Get(Tr.Key.HideDebugText), HideDebugText);
-            RemoveNotRequireInAuto = Tog(Tr.Get(Tr.Key.RemoveAutoReq), RemoveNotRequireInAuto);
-            CheckPseudo = Tog(Tr.Get(Tr.Key.CheckPseudo), CheckPseudo);
-            bool prevEL = AllowELCombo;
-            AllowELCombo = Tog(Tr.Get(Tr.Key.AllowELCombo), AllowELCombo);
-            if (prevEL != AllowELCombo) { PatchManager.RefreshPatches(); if (!AllowELCombo) AllowOrangeCombo = false; }
-            if (AllowELCombo) AllowOrangeCombo = Tog(Tr.Get(Tr.Key.AllowOrangeCombo), AllowOrangeCombo, 20);
-        });
     }
 
     void ResetCustomPos()
@@ -1064,7 +1100,17 @@ public class Settings
     public void Save() { SaveJson(); }
     public static Settings Load()
     {
+        bool freshConfig = !File.Exists(SettingsPath()) && !File.Exists(OldXmlPath());
         var s = LoadJson() ?? LoadXmlFallback() ?? new Settings();
+        // 全新安装：首启观感对齐旧的普通模式默认（扩展文本与宽松连击全关），
+        // 与旧配置迁移规则保持一致；想默认全开改这里的强制项即可
+        if (freshConfig)
+        {
+            s.ShowFPS = s.ShowAuthor = s.ShowState = s.ShowDeath = s.ShowStart = s.ShowTiming = false;
+            s.AllowELCombo = s.AllowOrangeCombo = s.CheckPseudo = false;
+            s.HideDebugText = s.RemoveNotRequireInAuto = s.RepositionAutoText = false;
+            s.DetailedProgress = s.TimeDecimals = false;
+        }
         // 手改 Settings.json 的越界语言值会让 Tr.Get 每次 GUI 绘制越界崩溃，这里钳制。
         if (s.CurrentLanguage < Language.English || s.CurrentLanguage > Language.Chinese)
             s.CurrentLanguage = Language.English;
@@ -1090,10 +1136,7 @@ public class Settings
         }
         s.Colors = ColorConfig.Load();
         s.Labels = LabelConfig.Load();
-        if (s.GeneralDisplayOrder == null || s.GeneralDisplayOrder.Length == 0)
-            s.GeneralDisplayOrder = GetDefaultGeneralOrder();
-        else
-            s.GeneralDisplayOrder = s.GeneralDisplayOrder.Where(x => x >= 0 && x <= 6).ToArray();
+        // 唯一的显示顺序：原 GeneralDisplayOrder 并入（未启用扩展文本时，多余元素自然不显示）
         if (s.JongyeolDisplayOrder == null || s.JongyeolDisplayOrder.Length == 0)
             s.JongyeolDisplayOrder = GetDefaultJongyeolOrder();
         else
@@ -1135,13 +1178,69 @@ public class Settings
             var path = SettingsPath();
             if (!File.Exists(path)) return null;
             var json = File.ReadAllText(path);
-            return JsonConvert.DeserializeObject<Settings>(json);
+            var s = JsonConvert.DeserializeObject<Settings>(json);
+            ApplyLegacyJongyeolMigration(s, json);
+            return s;
         }
         catch (Exception e)
         {
             Loader.Warning($"Failed to load Settings.json: {e.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// 旧配置迁移：JongyeolMode 总开关移除后，原「普通模式」用户的配置里六个扩展文本与
+    /// Jongyeol 行为项虽然保存着默认值 true，但从未实际生效。若不迁移，拆分开关会让这些功能
+    /// 一进游戏全部点亮。规则：配置里 JongyeolMode=false → 全部关掉，保持原观感；
+    /// JongyeolMode=true → 富格式/时间小数随迁，其余原样保留。
+    ///
+    /// ⚠ 只在配置中仍残留 JongyeolMode 键时执行一次：新构建保存配置时该键即被丢弃，
+    /// 之后必须完全不再触碰这些开关，否则用户每次手动开启的开关都会在下次启动时被抹掉
+    /// （「键缺失」≠「旧普通模式」——缺失只说明已经迁移过、或本就是新构建写的配置）。
+    /// </summary>
+    static void ApplyLegacyJongyeolMigration(Settings s, string json)
+    {
+        if (s == null) return;
+        bool hasKey;
+        bool legacyMode = false;
+        try
+        {
+            var jo = JsonConvert.DeserializeObject<JObject>(json);
+            hasKey = jo?["JongyeolMode"] != null;
+            if (hasKey) legacyMode = jo!["JongyeolMode"]!.Value<bool>();
+        }
+        catch { return; }
+        ApplyLegacyMigrationCore(s, hasKey, legacyMode);
+    }
+
+    /// <summary>XML 老配置的同一迁移：以 &lt;JongyeolMode&gt; 元素是否存在为准。</summary>
+    static void ApplyLegacyJongyeolMigrationXml(Settings s, string xmlText)
+    {
+        if (s == null) return;
+        int i = xmlText.IndexOf("<JongyeolMode>", StringComparison.Ordinal);
+        if (i < 0) { ApplyLegacyMigrationCore(s, false, false); return; }
+        int start = i + "<JongyeolMode>".Length;
+        int end = xmlText.IndexOf("</JongyeolMode>", start, StringComparison.Ordinal);
+        bool legacy = end > start && xmlText.Substring(start, end - start).Trim() == "true";
+        ApplyLegacyMigrationCore(s, true, legacy);
+    }
+
+    static void ApplyLegacyMigrationCore(Settings s, bool hasKey, bool legacyMode)
+    {
+        if (!hasKey) return;
+        if (legacyMode)
+        {
+            // 原 Jongyeol 用户：富格式进度、带小数时间随迁，精度保持其已保存值
+            s.DetailedProgress = s.TimeDecimals = true;
+            return;
+        }
+        s.ShowFPS = s.ShowAuthor = s.ShowState = s.ShowDeath = s.ShowStart = s.ShowTiming = false;
+        s.AllowELCombo = s.AllowOrangeCombo = s.CheckPseudo = false;
+        s.HideDebugText = s.RemoveNotRequireInAuto = s.RepositionAutoText = false;
+        // 原普通模式用户：主文本固定 2 位小数，富格式/时间小数关闭
+        s.DetailedProgress = s.TimeDecimals = false;
+        s.JongyeolDecimalPrecision = 2;
     }
 
     /// <summary>从旧的 UMM XML 加载，迁移后删除 XML 文件。</summary>
@@ -1152,10 +1251,12 @@ public class Settings
 
         try
         {
+            string xmlText = File.ReadAllText(path);
             using var reader = new StreamReader(path);
             var xml = new XmlSerializer(typeof(Settings));
             var s = (Settings)xml.Deserialize(reader);
-            // 立即写回 JSON 并删除旧 XML
+            // 迁移必须在序列化之前完成（旧写法先序列化再迁移，迁移结果落不了盘）
+            ApplyLegacyJongyeolMigrationXml(s, xmlText);
             var json = JsonConvert.SerializeObject(s, Formatting.Indented);
             File.WriteAllText(SettingsPath(), json);
             File.Delete(path);

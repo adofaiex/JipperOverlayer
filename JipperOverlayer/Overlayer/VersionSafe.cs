@@ -1,4 +1,5 @@
 using HarmonyLib;
+using JipperOverlayer.Overlayer.Util;
 using System;
 using System.Reflection;
 using UnityEngine;
@@ -23,6 +24,10 @@ public static class VersionSafe
     private static Func<int, int[]> _getHitMarginsCountForPlayer;
     private static Func<int, string> _getPlayerColorHex;
 
+    // CalculatePercentAcc 跨版本重载：r148 无参 / r150 带 bool 默认参
+    private static Action<scrMarginTracker> _calcAccNoArg;
+    private static MethodInfo _calcAccBool;
+
     // Single-slot memo for the per-hit player nameplate hex string
     private static int _cachedPlayerHexIdx = -1;
     private static Color _cachedPlayerHexColor;
@@ -34,7 +39,8 @@ public static class VersionSafe
         IsInitialized = true;
 
         IsV141OrLater = DetectApiVersion();
-        Loader.Log($"API version: {(IsV141OrLater ? "v141+" : "v136")}");
+        // 版本细分：旧探测只能分 v136/v141+；兼容层补充精确 release 号、HitMargin 取值数与 XPerfect 来源
+        Loader.Log($"API version: {(IsV141OrLater ? "v141+" : "v136")} | {HitMarginCompat.VersionReport}");
 
         if (IsV141OrLater)
             BindV141Delegates();
@@ -49,15 +55,48 @@ public static class VersionSafe
         catch { return false; }
     }
 
+    /// <summary>
+    /// 空判定数组。长度必须等于 HitMargin 的取值个数：
+    /// r148 为 12、r150 为 16。写死长度会让 r150 上后段判定（含 XPerfect）被静默丢弃。
+    /// </summary>
+    private static int[] NewEmptyCounts() => new int[HitMarginCompat.Count];
+
+    /// <summary>
+    /// 按签名探测 scrMarginTracker.CalculatePercentAcc。
+    /// 优先绑定无参版本（r148，可直接 CreateDelegate，零反射开销）；
+    /// 若只有带 bool 的版本（r150），则保留 MethodInfo 走反射调用。
+    /// </summary>
+    private static void ProbeCalculatePercentAcc()
+    {
+        try
+        {
+            var noArg = AccessTools.Method(typeof(scrMarginTracker), "CalculatePercentAcc", Type.EmptyTypes);
+            if (noArg != null)
+            {
+                _calcAccNoArg = (Action<scrMarginTracker>)Delegate.CreateDelegate(typeof(Action<scrMarginTracker>), noArg);
+                return;
+            }
+            _calcAccBool = AccessTools.Method(typeof(scrMarginTracker), "CalculatePercentAcc", new[] { typeof(bool) });
+            if (_calcAccBool == null)
+                Loader.Warning("VersionSafe: 未找到 scrMarginTracker.CalculatePercentAcc（精度显示可能不刷新）");
+        }
+        catch (Exception e)
+        {
+            Loader.Warning($"VersionSafe: CalculatePercentAcc 探测失败 ({e.Message})");
+        }
+    }
+
     // ===== v141+ — direct access, zero overhead =====
 
     private static void BindV141Delegates()
     {
+        ProbeCalculatePercentAcc();
+
         _getHitMarginsCount = () =>
         {
             if (scrMistakesManager.marginTrackers == null || scrMistakesManager.marginTrackers.Length == 0)
-                return new int[11];
-            return scrMistakesManager.marginTrackers[0].hitMarginsCount;
+                return NewEmptyCounts();
+            return scrMistakesManager.marginTrackers[0].hitMarginsCount ?? NewEmptyCounts();
         };
 
         _getPlanetSpeed = ctrl =>
@@ -70,8 +109,20 @@ public static class VersionSafe
         _calculatePercentAcc = () =>
         {
             if (scrMistakesManager.marginTrackers == null) return;
-            foreach (var t in scrMistakesManager.marginTrackers)
-                t?.CalculatePercentAcc();
+            // r148 是 CalculatePercentAcc()，r150 变成 CalculatePercentAcc(bool increaseRemainingPlayerHits = false)。
+            // 默认参数只是编译期语法糖：本 mod 以 r148 为基线编译，会发出零参 callvirt，
+            // 在 r150 上直接 MissingMethodException，因此必须运行时挑重载。
+            if (_calcAccNoArg != null)
+            {
+                foreach (var t in scrMistakesManager.marginTrackers)
+                    if (t != null) _calcAccNoArg(t);
+            }
+            else if (_calcAccBool != null)
+            {
+                var args = new object[] { false };
+                foreach (var t in scrMistakesManager.marginTrackers)
+                    if (t != null) _calcAccBool.Invoke(t, args);
+            }
         };
 
         _getPercentAcc = () => ADOBase.playerManager?.mistakesManager?.percentAcc ?? 1f;
@@ -96,8 +147,8 @@ public static class VersionSafe
         _getHitMarginsCountForPlayer = (playerIdx) =>
         {
             if (scrMistakesManager.marginTrackers == null || playerIdx >= scrMistakesManager.marginTrackers.Length)
-                return new int[11];
-            return scrMistakesManager.marginTrackers[playerIdx]?.hitMarginsCount ?? new int[11];
+                return NewEmptyCounts();
+            return scrMistakesManager.marginTrackers[playerIdx]?.hitMarginsCount ?? NewEmptyCounts();
         };
 
         _getPlayerColorHex = (playerIdx) =>
@@ -123,7 +174,7 @@ public static class VersionSafe
         _getHitMarginsCount = () =>
         {
             var v = hitMarginsGetter?.Invoke();
-            return v is int[] arr ? arr : new int[11];
+            return v is int[] arr ? arr : NewEmptyCounts();
         };
 
         // speed — instance field or property (type varies by version)
@@ -191,7 +242,7 @@ public static class VersionSafe
     }
 
     // ========== Public API ==========
-    public static int[] GetHitMarginsCount() => _getHitMarginsCount?.Invoke() ?? new int[11];
+    public static int[] GetHitMarginsCount() => _getHitMarginsCount?.Invoke() ?? NewEmptyCounts();
     public static double GetPlanetSpeed(scrController ctrl) => _getPlanetSpeed?.Invoke(ctrl) ?? 1.0;
     public static void CalculatePercentAcc() => _calculatePercentAcc?.Invoke();
     public static float GetPercentAcc() => _getPercentAcc?.Invoke() ?? 1f;

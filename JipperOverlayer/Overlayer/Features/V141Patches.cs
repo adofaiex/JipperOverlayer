@@ -12,7 +12,8 @@ internal static class V141Patches
     public static void RegisterAll()
     {
         PatchManager.RegisterPatches(() => Main.Settings.ShowBPM, typeof(ScrPlayerHitBpmPatch));
-        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && !(Main.Settings.JongyeolMode && Main.Settings.AllowELCombo), typeof(ScrMarginAddHitComboPatch));
+        // 宽松连击（EL/Perfect± 计入连击）不再是 Jongyeol 模式专属，作为独立开关存在
+        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && !Main.Settings.AllowELCombo, typeof(ScrMarginAddHitComboPatch));
         PatchManager.RegisterPatches(() => Main.Settings.ShowJudgement,
             typeof(ScrMarginAddHitJudgementPatch),
             typeof(ScrMarginResetPatch));
@@ -20,7 +21,7 @@ internal static class V141Patches
               Main.Settings.ShowXAccuracy || Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime ||
               Main.Settings.ShowCheckpoint || Main.Settings.ShowBest || Main.Settings.ShowProgressBar,
             typeof(ScrMarginCalcAccPatch));
-        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && Main.Settings.JongyeolMode && Main.Settings.AllowELCombo,
+        PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && Main.Settings.AllowELCombo,
             typeof(ScrMarginAddHitJComboPatch));
         PatchManager.RegisterPatches(() => true, typeof(MistakesManagerSetPlayerCountPatch));
     }

@@ -36,6 +36,11 @@ jobs:
           msbuild ${{ env.UMM_PROJECT_PATH }} -restore -p:Configuration=Release
           msbuild ${{ env.MELON_PROJECT_PATH }} -restore -p:Configuration=Release
 
+      - name: Verify game API (signature level)
+        run: |
+          dotnet build tools/VerifyGameApi/VerifyGameApi.csproj -c Release --nologo
+          dotnet tools/VerifyGameApi/bin/Release/net10.0/VerifyGameApi.dll Libs
+
       - name: Upload DLLs
         uses: actions/upload-artifact@v7
         with:
@@ -50,9 +55,38 @@ jobs:
       umm_loader: JipperOverlayer.Loader.UMM/bin/Release/JipperOverlayer.Loader.UMM.dll
       melon_loader: JipperOverlayer.Loader.Melon/bin/Release/JipperOverlayer.Loader.Melon.dll
 
+  # 双版本兼容门禁：主构建对着 adofai-libs main（当前 r150），这里锁定 r148 基线再编一遍。
+  # 源码里不允许出现任何单版本才有的符号——两个基线都必须零错误通过。
+  compat-r148:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Checkout r148 game DLLs
+        uses: actions/checkout@v6
+        with:
+          repository: 2228293026/adofai-libs
+          token: ${{ secrets.LIBS_ACCESS_TOKEN }}
+          ref: 361661553c2f8de69d2c3450a360be1c7f23e0b7
+          path: Libs
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Build against r148 baseline
+        run: |
+          msbuild ${{ env.PROJECT_PATH }} -restore -p:Configuration=Release
+          msbuild ${{ env.UMM_PROJECT_PATH }} -restore -p:Configuration=Release
+          msbuild ${{ env.MELON_PROJECT_PATH }} -restore -p:Configuration=Release
+
+      - name: Verify game API (signature level, r148)
+        run: |
+          dotnet build tools/VerifyGameApi/VerifyGameApi.csproj -c Release --nologo
+          dotnet tools/VerifyGameApi/bin/Release/net10.0/VerifyGameApi.dll Libs
+
   package:
     if: github.event_name != 'pull_request'
-    needs: build
+    needs: [build, compat-r148]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
