@@ -4,7 +4,7 @@ using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(JipperOverlayer.Melon.JipperMelonMod), "Jipper Overlayer", "1.1.4", "HitMargin", null)]
+[assembly: MelonInfo(typeof(JipperOverlayer.Melon.JipperMelonMod), "Jipper Overlayer", "1.1.5", "HitMargin", null)]
 [assembly: MelonGame("7th Beat Games", "A Dance of Fire and Ice")]
 
 namespace JipperOverlayer.Melon;
