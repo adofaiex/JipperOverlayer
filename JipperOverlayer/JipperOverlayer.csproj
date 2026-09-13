@@ -104,6 +104,13 @@
          The original OTF under assets/ is the tracked source of truth; LogicalName is the
          resource name used by GetManifestResourceStream at runtime. -->
     <EmbeddedResource Include="assets\MAPLESTORY_OTF_BOLD.OTF" LogicalName="JipperOverlayer.Assets.MAPLESTORY_OTF_BOLD.OTF" />
+    <!-- 进度条圆角精灵的原始 RGBA 字节（32×32×4 = 4096 B）。原 prefab 的 m_Sprite 指向
+         Unity 内置 Background 精灵（fileID 10907），该内置资源在玩家版无法取到，改由本
+         DLL 自带并在运行时重建 Sprite。 / Raw RGBA bytes (32×32×4 = 4096 B) of the
+         progress-bar corner sprite. The original prefab's m_Sprite pointed at Unity's built-in
+         Background sprite (fileID 10907), which cannot be fetched in a player build, so this
+         DLL carries the bytes and rebuilds the Sprite at runtime. -->
+    <EmbeddedResource Include="assets\ProgressBarSprite.rgba" LogicalName="JipperOverlayer.Assets.ProgressBarSprite.rgba" />
   </ItemGroup>
 
 </Project>

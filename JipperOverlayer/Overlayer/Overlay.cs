@@ -269,11 +269,11 @@ public class Overlay
 
     protected void InitializeProgressBar()
     {
-        // 进度条改为纯代码构建（原 bundle 里的 prefab 三个 Image 全用 Unity 内置
-        // UISprite，无自定义贴图，代码重建可逐字段对齐）。
+        // 进度条改为纯代码构建（原 bundle 里的 prefab 三个 Image 都只引用 Unity 内置
+        // Background 精灵，无自定义贴图，代码重建可逐字段对齐）。
         // / The progress bar is now built entirely in code: the old prefab's three Images all
-        // used Unity's built-in UISprite with no custom textures, so a code rebuild matches
-        // it field for field.
+        // referenced only Unity's built-in Background sprite with no custom textures, so a
+        // code rebuild matches it field for field.
         var go = AssetLoader.CreateProgressBar(Canvas.transform);
         var t = go.GetComponent<RectTransform>();
         t.anchoredPosition = new Vector2(0, -10);

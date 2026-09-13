@@ -8,14 +8,20 @@ using UnityEngine.UI;
 namespace JipperOverlayer.Overlayer;
 
 /// <summary>
-/// 资源加载：默认字体内嵌于主 DLL，首次运行释放到 ModPath\assets\；进度条改为纯代码构建。
-/// 原 AssetBundle 管线已移除——bundle 里实际只有一份 OTF 字体和一个全部使用
-/// Unity 内置 UISprite 的 prefab，不再值得为它维护 Unity 编辑器工程与三份 bundle 产物。
-/// / Resource loading: the default font is embedded in the main DLL and extracted to
-/// ModPath\assets\ on first run; the progress bar is now built entirely in code. The old
-/// AssetBundle pipeline is gone — the bundle only ever carried one OTF plus a prefab whose
-/// images all used Unity's built-in UISprite, so it no longer justified a Unity editor
-/// project and three committed bundle blobs.
+/// 资源加载：默认字体与进度条圆角精灵都内嵌于主 DLL，字体首次运行释放到 ModPath\assets\；
+/// 进度条改为纯代码构建。原 AssetBundle 管线已移除——bundle 里实际只有一份 OTF 字体和一个
+/// 只引用 Unity 内置 Background 精灵的 prefab，不再值得为它维护 Unity 编辑器工程与三份
+/// bundle 产物。内置精灵在玩家版无法用 Resources.GetBuiltinResource 取到（会打日志
+/// "The resource UI/Skin/UISprite.psd could not be loaded"），因此改为自带原始 RGBA 字节
+/// 并在运行时重建 Sprite，彻底摆脱对游戏 Unity 内置资源的依赖。
+/// / Resource loading: the default font and the progress-bar corner sprite are both embedded
+/// in the main DLL (the font is extracted to ModPath\assets\ on first run) and the progress
+/// bar is built entirely in code. The old AssetBundle pipeline is gone — the bundle only ever
+/// carried one OTF plus a prefab whose Images referenced nothing but Unity's built-in
+/// Background sprite. That built-in sprite cannot be fetched in a player build via
+/// Resources.GetBuiltinResource (it logs "The resource UI/Skin/UISprite.psd could not be
+/// loaded"), so this DLL now carries the raw RGBA bytes and rebuilds the Sprite at runtime,
+/// removing the dependency on the game's built-in UI resources altogether.
 /// </summary>
 public class AssetLoader
 {
@@ -29,8 +35,35 @@ public class AssetLoader
 
     public static TMP_FontAsset FontAsset;
 
-    static Sprite _uiSprite;
-    static bool _uiSpriteResolved;
+    /// <summary>内嵌进度条圆角精灵的原始 RGBA 资源名（与 csproj 的 LogicalName 一致）。
+    /// / Resource name of the embedded progress-bar corner sprite's raw RGBA
+    /// (matches the csproj LogicalName).</summary>
+    const string BarSpriteResource = "JipperOverlayer.Assets.ProgressBarSprite.rgba";
+
+    static Sprite _barSprite;
+    static bool _barSpriteFailed;
+
+    // 原 prefab 三个 Image 的圆角全部来自同一个精灵：m_Sprite 均为
+    // {fileID: 10907, guid: 0000000000000000f000000000000000}，即 Unity 内置 Background
+    // 精灵——32×32 圆角图，四边 border≈10px、PPU=200（内置精灵元数据：m_Border 四边
+    // 9.9487~9.9732、m_PixelsToUnits = 200、m_Pivot = (0.5, 0.5)）。Image 的
+    // m_Type=1(Sliced) 靠它把四角原样绘制、只拉伸中间段——精灵丢了就退化成直角矩形。
+    // 内置精灵在玩家版取不到（Resources.GetBuiltinResource 会打
+    // "The resource UI/Skin/UISprite.psd could not be loaded"），所以这里自带原始 RGBA
+    // 字节并在运行时重建：32×32 贴图、border 取 10 使中间段恰为 12px，与内置精灵一致。
+    // / All three of the original prefab's Images took their rounded corners from one sprite:
+    // m_Sprite was {fileID: 10907, guid: 0000000000000000f000000000000000}, i.e. Unity's
+    // built-in Background sprite — a 32×32 rounded texture, border ≈10px on every side,
+    // PPU 200 (built-in metadata: m_Border 9.9487–9.9732 per side, m_PixelsToUnits = 200,
+    // m_Pivot = (0.5, 0.5)). Image.m_Type = 1 (Sliced) relies on it to draw the corners
+    // unscaled and stretch only the middle — lose the sprite and the bar degrades to sharp
+    // rectangles. That built-in sprite cannot be fetched in a player build
+    // (Resources.GetBuiltinResource logs "The resource UI/Skin/UISprite.psd could not be
+    // loaded"), so this class carries the raw RGBA bytes and rebuilds it at runtime: a 32×32
+    // texture with a border of 10, leaving exactly the original 12px centre slice.
+    const int BarSpriteSize = 32;
+    const float BarSpriteBorder = 10f;
+    const float BarSpritePpu = 200f;
 
     public static void Load()
     {
@@ -126,13 +159,13 @@ public class AssetLoader
     }
 
     // ===== 进度条：原 prefab 的等价代码构建 =====
-    // 原 bundle 里的 ProgressBar.prefab 只有三个 Image，且 m_Sprite 全部指向 Unity 内置
-    // 的 UISprite（fileID 10907），没有任何自定义贴图——因此可以在代码里精确重建，
+    // 原 bundle 里的 ProgressBar.prefab 只有三个 Image，且 m_Sprite 全部指向同一个 Unity
+    // 内置 Background 精灵（fileID 10907），没有任何自定义贴图——因此可以在代码里精确重建，
     // 顺带删掉整个 Unity 编辑器工程。几何数值与原 prefab 逐字段对齐。
     // / Code-built equivalent of the old prefab. ProgressBar.prefab held only three Images
-    // whose m_Sprite all pointed at Unity's built-in UISprite (fileID 10907) with no custom
-    // textures, so it rebuilds exactly in code — which lets the whole Unity editor project
-    // go away. Geometry mirrors the original prefab field by field.
+    // whose m_Sprite all pointed at the same built-in Background sprite (fileID 10907) with no
+    // custom textures, so it rebuilds exactly in code — which lets the whole Unity editor
+    // project go away. Geometry mirrors the original prefab field by field.
 
     /// <summary>
     /// 构建进度条层级：borderLine（黑，最底层）→ background（白）→ line（随进度拉伸）。
@@ -178,29 +211,105 @@ public class AssetLoader
 
         var img = go.AddComponent<Image>();
         img.color = color;
-        // 原 prefab 的 m_Type: 1 = Sliced。内置 UISprite 取不到时 sprite 为 null，
-        // Sliced 会自动退化为简单矩形绘制，不会报错。
-        // / The original prefab had m_Type: 1 (Sliced). When the built-in UISprite can't be
-        // resolved the sprite stays null and Sliced degrades to a plain rect — no error.
+        // 原 prefab 的 m_Type: 1 = Sliced，四角由精灵的 border 区域原样绘制。
+        // / The original prefab had m_Type: 1 (Sliced), so the corners are drawn from the
+        // sprite's border region.
         img.type = Image.Type.Sliced;
-        img.sprite = GetUISprite();
+        img.sprite = GetBarSprite();
     }
 
     /// <summary>
-    /// 取 Unity 内置的 UISprite（原 prefab 用的就是它）。不同 Unity 版本对内置 UI 资源的
-    /// 暴露方式不同，取不到就返回 null，进度条退化为直角矩形而不是报错。
-    /// / Fetch Unity's built-in UISprite (exactly what the original prefab used). Built-in UI
-    /// resource exposure varies across Unity versions; returning null degrades the bar to
-    /// sharp rectangles instead of throwing.
+    /// 构建进度条圆角精灵：读内嵌的 32×32 RGBA 原始字节，还原成与原 prefab 所用内置
+    /// Background 精灵等价的 Sprite（border 四边 10px、PPU 200、pivot 居中）。
+    /// 结果缓存，三个 Image 共用同一份。资源缺失时返回 null（Sliced 退化为直角矩形，
+    /// 不报错）——这是构建问题，会打错误日志。
+    /// / Build the progress-bar corner sprite: read the embedded 32×32 RGBA bytes and
+    /// reconstruct the equivalent of the built-in Background sprite the original prefab used
+    /// (10px border on every side, PPU 200, centred pivot). Cached and shared by all three
+    /// Images. Returns null if the resource is missing (Sliced then degrades to plain rects
+    /// rather than throwing) — that is a build problem and is logged as an error.
     /// </summary>
-    static Sprite GetUISprite()
+    static Sprite GetBarSprite()
     {
-        if (_uiSpriteResolved) return _uiSprite;
-        _uiSpriteResolved = true;
-        try { _uiSprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd"); }
-        catch (Exception e) { Loader.Warning($"AssetLoader: built-in UISprite unavailable ({e.Message}); progress bar renders as plain rects"); }
-        if (_uiSprite == null)
-            Loader.Warning("AssetLoader: built-in UISprite not found; progress bar renders as plain rects");
-        return _uiSprite;
+        // Unity 重载的 == 会把「已销毁对象」判为 null：纹理一旦被卸载就重建，避免静默退回
+        // 直角矩形——那正是本次要修的 bug。资源缺失/构建失败是永久性问题，只报一次。
+        // / Unity's overloaded == reports a destroyed object as null, so a texture that got
+        // unloaded is rebuilt rather than silently falling back to sharp rectangles — exactly
+        // the bug being fixed here. A missing resource or a failed build is permanent and is
+        // reported only once.
+        if (_barSprite != null) return _barSprite;
+        if (_barSpriteFailed) return null;
+
+        byte[] rgba = null;
+        try
+        {
+            using Stream rs = typeof(AssetLoader).Assembly.GetManifestResourceStream(BarSpriteResource);
+            if (rs != null)
+            {
+                rgba = new byte[rs.Length];
+                int read = 0;
+                while (read < rgba.Length)
+                {
+                    int n = rs.Read(rgba, read, rgba.Length - read);
+                    if (n <= 0) break;
+                    read += n;
+                }
+                if (read != rgba.Length) rgba = null;
+            }
+        }
+        catch (Exception e) { Loader.Warning($"AssetLoader: bar sprite read failed: {e.Message}"); }
+
+        int expected = BarSpriteSize * BarSpriteSize * 4;
+        if (rgba == null || rgba.Length != expected)
+        {
+            // 内嵌资源缺失/长度不符是构建问题（csproj 的 EmbeddedResource 没生效）。
+            // / A missing or wrong-sized embedded resource is a BUILD problem (the csproj
+            // EmbeddedResource did not take effect).
+            Loader.Error($"AssetLoader: embedded bar sprite missing or wrong size " +
+                         $"({rgba?.Length ?? 0} != {expected}); progress bar renders as plain rects");
+            _barSpriteFailed = true;
+            return null;
+        }
+
+        try
+        {
+            // 用 SetPixels32 而不是 LoadRawTextureData：前者的行序有明确文档（数组从
+            // 左下角开始、行优先），内嵌字节正是按该顺序（视觉底行在前）排布的，
+            // 不会因平台/图形 API 的原始数据布局差异而上下翻转。
+            // / SetPixels32 rather than LoadRawTextureData: its row order is documented
+            // unambiguously (array starts at the bottom-left, row major), which is exactly how
+            // the embedded bytes are laid out (visual bottom row first), so the sprite can
+            // never end up flipped by a platform/graphics-API raw-layout difference.
+            var pixels = new Color32[BarSpriteSize * BarSpriteSize];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                int o = i * 4;
+                pixels[i] = new Color32(rgba[o], rgba[o + 1], rgba[o + 2], rgba[o + 3]);
+            }
+
+            var tex = new Texture2D(BarSpriteSize, BarSpriteSize, TextureFormat.RGBA32, false);
+            tex.name = "JipperProgressBarSprite";
+            tex.hideFlags = HideFlags.HideAndDontSave;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.filterMode = FilterMode.Bilinear;
+            tex.SetPixels32(pixels);
+            tex.Apply(false, false);
+
+            // border = (left, bottom, right, top)，与内置精灵四边等宽。
+            // / border = (left, bottom, right, top); equal on all four sides like the built-in.
+            var border = new Vector4(BarSpriteBorder, BarSpriteBorder, BarSpriteBorder, BarSpriteBorder);
+            _barSprite = Sprite.Create(tex, new Rect(0, 0, BarSpriteSize, BarSpriteSize),
+                new Vector2(0.5f, 0.5f), BarSpritePpu, 0, SpriteMeshType.FullRect, border);
+            _barSprite.name = "JipperProgressBarSprite";
+            _barSprite.hideFlags = HideFlags.HideAndDontSave;
+        }
+        catch (Exception e)
+        {
+            Loader.Warning($"AssetLoader: bar sprite build failed ({e.Message}); progress bar renders as plain rects");
+            _barSprite = null;
+            _barSpriteFailed = true;
+        }
+
+        return _barSprite;
     }
 }

@@ -1,0 +1,10 @@
+# 二进制资源：禁止 git 做换行转换（core.autocrlf=true 会破坏含 0x0A 的原始像素数据）。
+# / Binary assets: never let git rewrite line endings (core.autocrlf=true would corrupt
+# raw pixel data containing 0x0A bytes).
+*.rgba binary
+*.OTF binary
+
+# C# 源文件统一用 CRLF 存库，避免每次提交都出现 “LF will be replaced by CRLF” 警告。
+# / Store C# sources with CRLF so the “LF will be replaced by CRLF” warning stops appearing
+# on every commit.
+*.cs text eol=crlf
