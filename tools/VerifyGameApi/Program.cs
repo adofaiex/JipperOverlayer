@@ -126,7 +126,7 @@ class Program
             ("scrMisc","GetAdjustedAngleBoundaryInDeg", new[]{ "marginType","bpmTimesSpeed","conductorPitch","marginMult" }),
             ("scrMisc","GetAdjustedAngleBoundaryInDeg", new[]{ "difficulty","bpmTimesSpeed","conductorPitch","marginMult" }),
         });
-        // 精度刷新：r148 无参 或 r150 (bool)
+        // 精度刷新：无参（r148，以及 2026-09-13 起的 r150）或带 bool 的 r150 早期构建
         Alt("scrMarginTracker.CalculatePercentAcc", new[] {
             ("scrMarginTracker","CalculatePercentAcc", new string[0]),
             ("scrMarginTracker","CalculatePercentAcc", new[]{ "increaseRemainingPlayerHits" }),

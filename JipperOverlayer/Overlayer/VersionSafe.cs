@@ -24,7 +24,8 @@ public static class VersionSafe
     private static Func<int, int[]> _getHitMarginsCountForPlayer;
     private static Func<int, string> _getPlayerColorHex;
 
-    // CalculatePercentAcc 跨版本重载：r148 无参 / r150 带 bool 默认参
+    // CalculatePercentAcc 跨版本重载：r148 无参 / r150 某段构建带 bool 默认参 / r150 新版又改回无参
+    // （2026-09-13 的游戏更新把 bool increaseRemainingPlayerHits 参数删掉了，见 ProbeCalculatePercentAcc）
     private static Action<scrMarginTracker> _calcAccNoArg;
     private static MethodInfo _calcAccBool;
 
@@ -63,8 +64,9 @@ public static class VersionSafe
 
     /// <summary>
     /// 按签名探测 scrMarginTracker.CalculatePercentAcc。
-    /// 优先绑定无参版本（r148，可直接 CreateDelegate，零反射开销）；
-    /// 若只有带 bool 的版本（r150），则保留 MethodInfo 走反射调用。
+    /// 优先绑定无参版本（r148，以及 2026-09-13 起的 r150 新版；可直接 CreateDelegate，零反射开销）；
+    /// 只有带 bool 的中间版本（r150 早期构建）才保留 MethodInfo 走反射调用。
+    /// 该 bool 参数（increaseRemainingPlayerHits）已被游戏移除，无参分支是当前主线。
     /// </summary>
     private static void ProbeCalculatePercentAcc()
     {
@@ -109,9 +111,9 @@ public static class VersionSafe
         _calculatePercentAcc = () =>
         {
             if (scrMistakesManager.marginTrackers == null) return;
-            // r148 是 CalculatePercentAcc()，r150 变成 CalculatePercentAcc(bool increaseRemainingPlayerHits = false)。
-            // 默认参数只是编译期语法糖：本 mod 以 r148 为基线编译，会发出零参 callvirt，
-            // 在 r150 上直接 MissingMethodException，因此必须运行时挑重载。
+            // r148 是 CalculatePercentAcc()；r150 早期构建加过 CalculatePercentAcc(bool increaseRemainingPlayerHits = false)，
+            // 2026-09-13 的更新又把它删回无参。默认参数只是编译期语法糖：本 mod 以 r148 为基线编译，
+            // 会发出零参 callvirt，在「带 bool 参数」那一版上直接 MissingMethodException，因此必须运行时挑重载。
             if (_calcAccNoArg != null)
             {
                 foreach (var t in scrMistakesManager.marginTrackers)
