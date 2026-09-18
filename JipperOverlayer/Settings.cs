@@ -57,7 +57,7 @@ public class Settings
     public int ExtendedDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
     public bool RemoveNotRequireInAuto = true, CheckPseudo = true, AllowELCombo = true, AllowOrangeCombo = true;
-    public bool ComboTitleAltOnNonPerfect = true;
+    public bool ComboTitleAltOnNonPerfect;
     public bool PatchBetaWatermark = true, PatchLevelName = true, RepositionAutoText = true;
     public Language CurrentLanguage;
     public int FontIndex;
