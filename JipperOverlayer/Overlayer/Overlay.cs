@@ -828,6 +828,7 @@ public class Overlay
     public void OnNonPerfectHit()
     {
         var s = Main.Settings;
+        if (!s.ComboTitleAltOnNonPerfect) return;
         if (s.AllowELCombo || s.AllowOrangeCombo) ExtendedOverlay.OnNonPerfectHit();
     }
 
