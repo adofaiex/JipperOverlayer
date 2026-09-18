@@ -1350,12 +1350,14 @@ public class Settings
         {
             var jo = JsonConvert.DeserializeObject<JObject>(json);
             if (jo == null) return;
-            if (s.ExtendedDisplayOrder == null || s.ExtendedDisplayOrder.Length == 0)
-            {
-                var legacy = jo["JongyeolDisplayOrder"]?.ToObject<int[]>();
-                if (legacy != null && legacy.Length > 0)
-                    s.ExtendedDisplayOrder = legacy;
-            }
+            var legacy = jo["JongyeolDisplayOrder"]?.ToObject<int[]>();
+            if (legacy == null || legacy.Length == 0) return;
+
+            var current = s.ExtendedDisplayOrder ?? Array.Empty<int>();
+            if (current.SequenceEqual(legacy)) return;
+
+            s.ExtendedDisplayOrder = legacy;
+            s.Save();
         }
         catch
         {
@@ -1393,11 +1395,38 @@ public class Settings
     {
         if (s == null) return;
         int i = xmlText.IndexOf("<ExtendedOverlayMode>", StringComparison.Ordinal);
-        if (i < 0) { ApplyLegacyMigrationCore(s, false, false); return; }
+        if (i < 0) { ApplyLegacyMigrationCore(s, false, false); MigrateLegacyDisplayOrderXml(s, xmlText); return; }
         int start = i + "<ExtendedOverlayMode>".Length;
         int end = xmlText.IndexOf("</ExtendedOverlayMode>", start, StringComparison.Ordinal);
         bool legacy = end > start && xmlText.Substring(start, end - start).Trim() == "true";
         ApplyLegacyMigrationCore(s, true, legacy);
+        MigrateLegacyDisplayOrderXml(s, xmlText);
+    }
+
+    private static void MigrateLegacyDisplayOrderXml(Settings s, string xmlText)
+    {
+        try
+        {
+            int i = xmlText.IndexOf("<JongyeolDisplayOrder>", StringComparison.Ordinal);
+            if (i < 0) return;
+            int start = i + "<JongyeolDisplayOrder>".Length;
+            int end = xmlText.IndexOf("</JongyeolDisplayOrder>", start, StringComparison.Ordinal);
+            if (end <= start) return;
+            var inner = xmlText.Substring(start, end - start);
+            var legacy = inner.Split(new[] { ',', ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(token => int.Parse(token))
+                .ToArray();
+            if (legacy.Length == 0) return;
+
+            var current = s.ExtendedDisplayOrder ?? Array.Empty<int>();
+            if (current.SequenceEqual(legacy)) return;
+
+            s.ExtendedDisplayOrder = legacy;
+        }
+        catch
+        {
+            // ignore migration failures and fall back to defaults
+        }
     }
 
     static void ApplyLegacyMigrationCore(Settings s, bool hasKey, bool legacyMode)
