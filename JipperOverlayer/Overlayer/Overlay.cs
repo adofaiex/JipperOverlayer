@@ -824,11 +824,12 @@ public class Overlay
         return s.Colors.GetComboColor((float)combo / s.ComboColorMax);
     }
 
-    // 连击标题切换（COMBO → 备用文本）属于宽松连击的表现，仅在相应功能开启时生效
+    // 连击标题切换（COMBO → 备用文本）三个并列触发条件：新开关、EL 连击、VL 连击，任一开启即切换
     public void OnNonPerfectHit()
     {
         var s = Main.Settings;
-        if (s.AllowELCombo || s.AllowOrangeCombo) ExtendedOverlay.OnNonPerfectHit();
+        if (s.ComboTitleAltOnNonPerfect || s.AllowELCombo || s.AllowOrangeCombo)
+            ExtendedOverlay.OnNonPerfectHit();
     }
 
     public void UpdateBPM()

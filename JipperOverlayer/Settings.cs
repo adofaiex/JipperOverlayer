@@ -57,6 +57,7 @@ public class Settings
     public int ExtendedDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
     public bool RemoveNotRequireInAuto = true, CheckPseudo = true, AllowELCombo = true, AllowOrangeCombo = true;
+    public bool ComboTitleAltOnNonPerfect = false;
     public bool PatchBetaWatermark = true, PatchLevelName = true, RepositionAutoText = true;
     public Language CurrentLanguage;
     public int FontIndex;
@@ -390,6 +391,7 @@ public class Settings
                     () => { Colors.Combo = new([(0f, new Color(0.8745f, 0.7098f, 1f)), (1f, new Color(0.7176f, 0.3490f, 1f))]); Colors.Save(); });
                 bool prevReversed = ComboLineReversed;
                 ComboLineReversed = Tog(Tr.Get(Tr.Key.ComboLineReversed), ComboLineReversed);
+                ComboTitleAltOnNonPerfect = Tog(Tr.Get(Tr.Key.ComboTitleAltOnNonPerfect), ComboTitleAltOnNonPerfect);
                 if (prevReversed != ComboLineReversed) Overlayer.Overlay.Instance?.RefreshVisibility();
             }
         });
