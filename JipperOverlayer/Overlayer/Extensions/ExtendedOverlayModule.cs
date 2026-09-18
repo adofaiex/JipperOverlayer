@@ -403,7 +403,6 @@ public class ExtendedOverlayModule
     public void OnNonPerfectHit()
     {
         if (_perToCom) return;
-        if (!Main.Settings.ComboTitleAltOnNonPerfect) return;
         _overlay.ComboTitle.text = Main.Settings.Labels.ComboTitleAlt;
         _perToCom = true;
     }

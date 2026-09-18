@@ -80,6 +80,6 @@ internal static class PatchLogic
         }
 
         if (!HitMarginCompat.IsPerfectCore(h) && !isAuto && !isMidspin)
-            overlay.OnNonPerfectHit();
+            overlay.ExtendedOverlay.OnNonPerfectHit();
     }
 }
