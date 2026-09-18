@@ -118,7 +118,7 @@ internal static class HitMarginCompat
             ? hit == PerfectMinus || hit == XPerfect || hit == PerfectPlus
             : hit == Perfect;
 
-    /// <summary>黄绿及以上（中心完美 + EarlyPerfect / LatePerfect）——Jongyeol 连击用。</summary>
+    /// <summary>黄绿及以上（中心完美 + EarlyPerfect / LatePerfect）——ExtendedOverlay 连击用。</summary>
     public static bool IsPerfectExtended(int hit)
         => IsPerfectCore(hit) || hit == EarlyPerfect || hit == LatePerfect;
 

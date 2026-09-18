@@ -20,12 +20,12 @@ public class ColorConfig
     public ColorPerDictionary ProgressBarBackground = new([(1f, Color.white)]);
     public ColorPerDictionary ProgressBarBorder = new([(1f, Color.black)]);
 
-    // Jongyeol colors — gradients
+    // Extended overlay colors — gradients
     public ColorPerDictionary JCombo = new([(0f, Color.red), (0.2f, new Color(0.9882f, 1, 0.302f)), (1f, new Color(0.3725f, 1, 0.3119f))]);
     public ColorPerDictionary JDeath = new([(0f, Color.red), (1f, Color.green)]);
     public ColorPerDictionary JTiming = new([(0f, Color.red), (1f, Color.green)]);
 
-    // Jongyeol colors — single
+    // Extended overlay colors — single
     public ColorCache JStateWaiting = new(Color.white);
     public ColorCache JStateAutoTile = new(new Color(1, 0.5f, 0));
     public ColorCache JStateAuto = new(new Color(0.1058824f, 1f, 0));

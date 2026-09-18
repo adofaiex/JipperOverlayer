@@ -27,7 +27,7 @@ public class Settings
     public float BpmColorMax = 8000f;
     public int ComboColorMax = 1000;
     public bool ShowFPS = true, ShowAuthor = true, ShowState = true;
-    // 原 Jongyeol 模式的文本样式差异，拆成独立开关：
+    // 原 扩展叠加层的文本样式差异，拆成独立开关：
     //   DetailedProgress —— 进度显示「当前/总数 [-剩余] (%)」富格式（否则只显示百分比）
     //   TimeDecimals     —— 音乐/地图时间带一位小数
     public bool DetailedProgress, TimeDecimals;
@@ -44,17 +44,17 @@ public class Settings
     // ==== 每文本独立小数位 ====
     public int ProgressDecimal = 2, AccuracyDecimal = 2, XAccuracyDecimal = 2, BestDecimal = 2, TimingDecimal = 5;
 
-    /// <summary>任一 Jongyeol 扩展文本开启。拆掉总开关后，用它决定「Jongyeol 风格」的连带表现
+    /// <summary>任一 ExtendedOverlay 扩展文本开启。拆掉总开关后，用它决定「ExtendedOverlay 风格」的连带表现
     /// （富格式进度文本、扩展文本的小数精度等），避免普通模式用户被动接受这些变化。</summary>
-    public bool JongyeolStyleActive => ShowFPS || ShowAuthor || ShowState || ShowDeath || ShowStart || ShowTiming;
+    public bool ExtendedStyleActive => ShowFPS || ShowAuthor || ShowState || ShowDeath || ShowStart || ShowTiming;
 
     /// <summary>任一挂在主容器下的栈式文本开启（含 XScore 与三个潜力值文本）。
     /// 主容器一旦 SetActive(false)，其下所有文本都不渲染；布局也只在任一元素开启时才跑。
     /// 新增显示元素必须并入此处，否则会出现「开关打开、文本却永远不显示」。</summary>
     public bool AnyStackedTextVisible => ShowProgress || ShowAccuracy || ShowXAccuracy || ShowMusicTime
-        || ShowMapTime || ShowCheckpoint || ShowBest || ShowXScore || JongyeolStyleActive;
+        || ShowMapTime || ShowCheckpoint || ShowBest || ShowXScore || ExtendedStyleActive;
     public float FPSRefreshRate = 0.2f;
-    public int JongyeolDecimalPrecision = 2;
+    public int ExtendedDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
     public bool RemoveNotRequireInAuto = true, CheckPseudo = true, AllowELCombo = true, AllowOrangeCombo = true;
     public bool PatchBetaWatermark = true, PatchLevelName = true, RepositionAutoText = true;
@@ -164,7 +164,7 @@ public class Settings
     public bool ShowXPerfectInJudgement;
     public bool ShowAutoInXPerfect;
     // 统一后的唯一显示顺序（原 GeneralDisplayOrder 已并入：两个模式本就是同一个栈式布局）
-    public int[] JongyeolDisplayOrder = [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    public int[] ExtendedDisplayOrder = [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
     public int[] BpmLineOrder = [0, 1, 2];
     public bool[] BpmLineVisibility = [true, true, true];
     public int[] AttemptLineOrder = [0, 1];
@@ -427,7 +427,7 @@ public class Settings
             DrawAttemptLineOrder();
         });
 
-        // ==== 扩展文本（原 Jongyeol 分区并入：与 progress/time 等同为独立显示类型） ====
+        // ==== 扩展文本（原 ExtendedOverlay 分区并入：与 progress/time 等同为独立显示类型） ====
         DrawDisplaySub("jDisplay", Tr.Get(Tr.Key.DisplayOptions), () =>
         {
             ShowFPS = TogR(Tr.Key.ShowFps, ShowFPS);
@@ -475,32 +475,32 @@ public class Settings
                 Colors.JTiming.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateTime()), Tr.Get(Tr.Key.TimingColor),
                     () => { Colors.JTiming = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
                 TimingDecimal = DecSlide("timingDec", Tr.Key.DecimalPrecision, TimingDecimal, 5,
-                    () => Overlay.Instance?.Jongyeol?.RefreshTiming());
+                    () => Overlay.Instance?.ExtendedOverlay?.RefreshTiming());
                 TimingTextType = EnumSel(Tr.Key.TimingDisplay, TimingTextType, TextTypeNames.Name, () =>
                 {
                     var o = Overlay.Instance;
-                    if (o != null) { o.SetupLocationMain(); o.Jongyeol?.RefreshTiming(); }
+                    if (o != null) { o.SetupLocationMain(); o.ExtendedOverlay?.RefreshTiming(); }
                 });
                 HelpLabel(Tr.Get(Tr.Key.HelpTimingMode));
             }
             GUILayout.BeginHorizontal();
             GUILayout.Label(Tr.Get(Tr.Key.DecimalPrecision), GUILayout.Width(120));
-            JongyeolDecimalPrecision = (int)GUILayout.HorizontalSlider(JongyeolDecimalPrecision, 0, 5);
+            ExtendedDecimalPrecision = (int)GUILayout.HorizontalSlider(ExtendedDecimalPrecision, 0, 5);
             if (!_slideFields.TryGetValue("DecimalPrecision", out var dpText))
-                _slideFields["DecimalPrecision"] = dpText = JongyeolDecimalPrecision.ToString();
+                _slideFields["DecimalPrecision"] = dpText = ExtendedDecimalPrecision.ToString();
             string newDpText = GUILayout.TextField(dpText, GUILayout.Width(55));
             if (newDpText != dpText)
             {
                 _slideFields["DecimalPrecision"] = newDpText;
                 if (int.TryParse(newDpText, out int dpParsed))
-                    JongyeolDecimalPrecision = Mathf.Clamp(dpParsed, 0, 5);
+                    ExtendedDecimalPrecision = Mathf.Clamp(dpParsed, 0, 5);
             }
-            else if (newDpText == dpText && JongyeolDecimalPrecision.ToString() != dpText)
-                _slideFields["DecimalPrecision"] = JongyeolDecimalPrecision.ToString();
+            else if (newDpText == dpText && ExtendedDecimalPrecision.ToString() != dpText)
+                _slideFields["DecimalPrecision"] = ExtendedDecimalPrecision.ToString();
             GUILayout.EndHorizontal();
             var o = Overlay.Instance;
             // 全局小数位滑条现只管扩展文本（FPS/开始进度等）；主文本各有独立小数位
-            if (o?.Jongyeol != null) o.Jongyeol.DecimalPrecision = JongyeolDecimalPrecision;
+            if (o?.ExtendedOverlay != null) o.ExtendedOverlay.DecimalPrecision = ExtendedDecimalPrecision;
         });
 
         DrawDisplaySub("jBehavior", Tr.Get(Tr.Key.BehaviorOptions), () =>
@@ -523,7 +523,7 @@ public class Settings
 
         GUILayout.Space(5);
         // 显示顺序：全部 13 个可栈排元素共栈共顺序（总开关移除后两套顺序合一）
-        DrawOrderSection("stackOrder", JongyeolDisplayOrder, true);
+        DrawOrderSection("stackOrder", ExtendedDisplayOrder, true);
 
         GUILayout.Space(3);
         PatchBetaWatermark = Tog(Tr.Get(Tr.Key.PatchBetaWatermark), PatchBetaWatermark);
@@ -569,7 +569,7 @@ public class Settings
         }
     }
 
-    void DrawOrderSection(string key, int[] order, bool isJongyeol)
+    void DrawOrderSection(string key, int[] order, bool isExtendedOverlay)
     {
         bool expanded = _expandedOrder == key;
         GUILayout.BeginHorizontal();
@@ -614,7 +614,7 @@ public class Settings
         if (GUILayout.Button(Tr.Get(Tr.Key.ResetOrder), GUILayout.ExpandWidth(false)))
         {
             list.Clear();
-            list.AddRange(GetDefaultJongyeolOrder());
+            list.AddRange(GetDefaultExtendedOverlayOrder());
             changed = true;
         }
 
@@ -623,21 +623,21 @@ public class Settings
 
         if (changed)
         {
-            JongyeolDisplayOrder = list.ToArray();
+            ExtendedDisplayOrder = list.ToArray();
             Save();
             var o = Overlay.Instance;
             if (o != null) { o.SetupLocationMain(); o.RefreshVisibility(); }
         }
     }
 
-    static int[] GetDefaultJongyeolOrder() => [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    static int[] GetDefaultExtendedOverlayOrder() => [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
     /// <summary>把默认顺序里存在、但用户数组里缺失的元素追加到末尾。
     /// 旧版配置保存的顺序数组不含后加的元素（如 XScore / 潜力值），
     /// 不补齐 SetupLocation 的 foreach 就永远遍历不到它们——表现为开关打开却始终不显示。</summary>
-    static int[] AppendMissingJongyeolElements(int[] order)
+    static int[] AppendMissingExtendedOverlayElements(int[] order)
     {
-        var defaults = GetDefaultJongyeolOrder();
+        var defaults = GetDefaultExtendedOverlayOrder();
         var have = new HashSet<int>(order);
         var missing = defaults.Where(x => !have.Contains(x)).ToArray();
         if (missing.Length == 0) return order;
@@ -673,7 +673,7 @@ public class Settings
         _ => elem.ToString()
     };
 
-    static bool IsValidJongyeolElement(int id) => id switch
+    static bool IsValidExtendedOverlayElement(int id) => id switch
     {
         >= 10 and <= 20 => true,  // FPS..PotentialXScore
         >= 0 and <= 6 => true,    // Progress..Best
@@ -1146,7 +1146,7 @@ public class Settings
         DrawLabelField("Combo Title Alt", ref Labels.ComboTitleAlt);
 
         GUILayout.Space(3);
-        GUILayout.Label("  -- Jongyeol --");
+        GUILayout.Label("  -- ExtendedOverlay --");
         DrawLabelField("FPS", ref Labels.FPS);
         DrawLabelField("Author", ref Labels.Author);
         DrawLabelField("State", ref Labels.State);
@@ -1285,14 +1285,14 @@ public class Settings
         s.Colors = ColorConfig.Load();
         s.Labels = LabelConfig.Load();
         // 唯一的显示顺序：原 GeneralDisplayOrder 并入（未启用扩展文本时，多余元素自然不显示）
-        if (s.JongyeolDisplayOrder == null || s.JongyeolDisplayOrder.Length == 0)
-            s.JongyeolDisplayOrder = GetDefaultJongyeolOrder();
+        if (s.ExtendedDisplayOrder == null || s.ExtendedDisplayOrder.Length == 0)
+            s.ExtendedDisplayOrder = GetDefaultExtendedOverlayOrder();
         else
             // 先剔除越界值，再补齐旧配置里缺失的元素：新增显示元素（如 XScore / 潜力值）
             // 若不在顺序数组里，SetupLocation 的 foreach 根本不会遍历到它们，
             // 表现为「开关打开了但文本永远不显示」。补齐追加在末尾，不打乱用户已排的顺序。
-            s.JongyeolDisplayOrder = AppendMissingJongyeolElements(
-                s.JongyeolDisplayOrder.Where(x => IsValidJongyeolElement(x)).ToArray());
+            s.ExtendedDisplayOrder = AppendMissingExtendedOverlayElements(
+                s.ExtendedDisplayOrder.Where(x => IsValidExtendedOverlayElement(x)).ToArray());
         if (s.BpmLineOrder == null || s.BpmLineOrder.Length == 0)
             s.BpmLineOrder = [0, 1, 2];
         if (s.BpmLineVisibility == null || s.BpmLineVisibility.Length != 3)
@@ -1331,7 +1331,7 @@ public class Settings
             if (!File.Exists(path)) return null;
             var json = File.ReadAllText(path);
             var s = JsonConvert.DeserializeObject<Settings>(json);
-            ApplyLegacyJongyeolMigration(s, json);
+            ApplyLegacyExtendedOverlayMigration(s, json);
             return s;
         }
         catch (Exception e)
@@ -1342,16 +1342,16 @@ public class Settings
     }
 
     /// <summary>
-    /// 旧配置迁移：JongyeolMode 总开关移除后，原「普通模式」用户的配置里六个扩展文本与
-    /// Jongyeol 行为项虽然保存着默认值 true，但从未实际生效。若不迁移，拆分开关会让这些功能
-    /// 一进游戏全部点亮。规则：配置里 JongyeolMode=false → 全部关掉，保持原观感；
-    /// JongyeolMode=true → 富格式/时间小数随迁，其余原样保留。
+    /// 旧配置迁移：ExtendedOverlayMode 总开关移除后，原「普通模式」用户的配置里六个扩展文本与
+    /// ExtendedOverlay 行为项虽然保存着默认值 true，但从未实际生效。若不迁移，拆分开关会让这些功能
+    /// 一进游戏全部点亮。规则：配置里 ExtendedOverlayMode=false → 全部关掉，保持原观感；
+    /// ExtendedOverlayMode=true → 富格式/时间小数随迁，其余原样保留。
     ///
-    /// ⚠ 只在配置中仍残留 JongyeolMode 键时执行一次：新构建保存配置时该键即被丢弃，
+    /// ⚠ 只在配置中仍残留 ExtendedOverlayMode 键时执行一次：新构建保存配置时该键即被丢弃，
     /// 之后必须完全不再触碰这些开关，否则用户每次手动开启的开关都会在下次启动时被抹掉
     /// （「键缺失」≠「旧普通模式」——缺失只说明已经迁移过、或本就是新构建写的配置）。
     /// </summary>
-    static void ApplyLegacyJongyeolMigration(Settings s, string json)
+    static void ApplyLegacyExtendedOverlayMigration(Settings s, string json)
     {
         if (s == null) return;
         bool hasKey;
@@ -1359,21 +1359,21 @@ public class Settings
         try
         {
             var jo = JsonConvert.DeserializeObject<JObject>(json);
-            hasKey = jo?["JongyeolMode"] != null;
-            if (hasKey) legacyMode = jo!["JongyeolMode"]!.Value<bool>();
+            hasKey = jo?["ExtendedOverlayMode"] != null;
+            if (hasKey) legacyMode = jo!["ExtendedOverlayMode"]!.Value<bool>();
         }
         catch { return; }
         ApplyLegacyMigrationCore(s, hasKey, legacyMode);
     }
 
-    /// <summary>XML 老配置的同一迁移：以 &lt;JongyeolMode&gt; 元素是否存在为准。</summary>
-    static void ApplyLegacyJongyeolMigrationXml(Settings s, string xmlText)
+    /// <summary>XML 老配置的同一迁移：以 &lt;ExtendedOverlayMode&gt; 元素是否存在为准。</summary>
+    static void ApplyLegacyExtendedOverlayMigrationXml(Settings s, string xmlText)
     {
         if (s == null) return;
-        int i = xmlText.IndexOf("<JongyeolMode>", StringComparison.Ordinal);
+        int i = xmlText.IndexOf("<ExtendedOverlayMode>", StringComparison.Ordinal);
         if (i < 0) { ApplyLegacyMigrationCore(s, false, false); return; }
-        int start = i + "<JongyeolMode>".Length;
-        int end = xmlText.IndexOf("</JongyeolMode>", start, StringComparison.Ordinal);
+        int start = i + "<ExtendedOverlayMode>".Length;
+        int end = xmlText.IndexOf("</ExtendedOverlayMode>", start, StringComparison.Ordinal);
         bool legacy = end > start && xmlText.Substring(start, end - start).Trim() == "true";
         ApplyLegacyMigrationCore(s, true, legacy);
     }
@@ -1383,7 +1383,7 @@ public class Settings
         if (!hasKey) return;
         if (legacyMode)
         {
-            // 原 Jongyeol 用户：富格式进度、带小数时间随迁，精度保持其已保存值
+            // 原 ExtendedOverlay 用户：富格式进度、带小数时间随迁，精度保持其已保存值
             s.DetailedProgress = s.TimeDecimals = true;
             return;
         }
@@ -1392,7 +1392,7 @@ public class Settings
         s.HideDebugText = s.RemoveNotRequireInAuto = s.RepositionAutoText = false;
         // 原普通模式用户：主文本固定 2 位小数，富格式/时间小数关闭
         s.DetailedProgress = s.TimeDecimals = false;
-        s.JongyeolDecimalPrecision = 2;
+        s.ExtendedDecimalPrecision = 2;
     }
 
     /// <summary>从旧的 UMM XML 加载，迁移后删除 XML 文件。</summary>
@@ -1408,7 +1408,7 @@ public class Settings
             var xml = new XmlSerializer(typeof(Settings));
             var s = (Settings)xml.Deserialize(reader);
             // 迁移必须在序列化之前完成（旧写法先序列化再迁移，迁移结果落不了盘）
-            ApplyLegacyJongyeolMigrationXml(s, xmlText);
+            ApplyLegacyExtendedOverlayMigrationXml(s, xmlText);
             var json = JsonConvert.SerializeObject(s, Formatting.Indented);
             File.WriteAllText(SettingsPath(), json);
             File.Delete(path);

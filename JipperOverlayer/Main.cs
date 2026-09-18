@@ -154,7 +154,7 @@ public static class Main
     {
         XPerfectIntegration.EnsureInitialized();
         if (Settings.ShowFPS)
-            try { _overlay?.Jongyeol?.UpdateFPS(deltaTime); }
+            try { _overlay?.ExtendedOverlay?.UpdateFPS(deltaTime); }
             catch { }
     }
 

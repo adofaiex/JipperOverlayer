@@ -35,7 +35,7 @@ internal static class PatchLogic
         }
         else if ((h == HitMarginCompat.VeryEarly || h == HitMarginCompat.VeryLate) && Main.Settings.AllowOrangeCombo)
         {
-            // 橙色连击原是 Jongyeol 模式专属，现拆为独立开关：普通模式下 VeryEarly/VeryLate 也可保连击
+            // 橙色连击原是 扩展叠加层专属，现拆为独立开关：普通模式下 VeryEarly/VeryLate 也可保连击
             overlay.UpdateCombo(++GameLifecycleHelper.ComboCount, true);
         }
         else if (Main.Settings.EnableAutoCombo || !isAuto)
@@ -48,7 +48,7 @@ internal static class PatchLogic
     public static void JComboPostfix(HitMargin hit)
     {
         var overlay = Overlay.Instance;
-        if (overlay?.Jongyeol == null) return;
+        if (overlay?.ExtendedOverlay == null) return;
         // 原版 switch 依赖枚举常量，但 r150 的枚举取值整体位移，
         // 因此改为按运行时解析出的语义下标判断。
         int h = (int)hit;
@@ -80,6 +80,6 @@ internal static class PatchLogic
         }
 
         if (!HitMarginCompat.IsPerfectCore(h) && !isAuto && !isMidspin)
-            overlay.Jongyeol.OnNonPerfectHit();
+            overlay.ExtendedOverlay.OnNonPerfectHit();
     }
 }

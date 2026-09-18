@@ -92,7 +92,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
                     SetXScore(ref PlayerDatas[i], i);
             else SetXScore(ref PlayerDatas[index], index);
 
-            var xs = overlay.Jongyeol?.XScoreText;
+            var xs = overlay.ExtendedOverlay?.XScoreText;
             if (xs)
             {
                 _sb.Clear();
@@ -240,7 +240,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         public string XScoreString;
     }
 
-    // ===== Jongyeol-mode helpers (coop, per-player) =====
+    // ===== Extended-overlay helpers (coop, per-player) =====
 
     private int[] _playerDeath;
     private int[] _lastPlayerDeath;

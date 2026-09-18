@@ -13,10 +13,10 @@
 
 ### Bug Fixes
 
-- **XScore / 潜力值文本始终不显示**：`JongyeolDisplayOrder` 的字段初始值仍只到上一次新增元素为止（`10..15`），而 `Settings.Load` 只在数组为 null 或空时才回退到 `GetDefaultJongyeolOrder()` —— 于是五个新元素（`AvgTiming`/`XScore`/`P.Accuracy`/`P.XAccuracy`/`P.XScore`）从未被布局遍历到，新装与老配置都中招。默认数组已补全，`Load` 还会把保存的顺序里缺失的默认元素追加到末尾，已有 `Settings.json` 也会被修好
+- **XScore / 潜力值文本始终不显示**：`ExtendedDisplayOrder` 的字段初始值仍只到上一次新增元素为止（`10..15`），而 `Settings.Load` 只在数组为 null 或空时才回退到 `GetDefaultExtendedOverlayOrder()` —— 于是五个新元素（`AvgTiming`/`XScore`/`P.Accuracy`/`P.XAccuracy`/`P.XScore`）从未被布局遍历到，新装与老配置都中招。默认数组已补全，`Load` 还会把保存的顺序里缺失的默认元素追加到末尾，已有 `Settings.json` 也会被修好
 - **只开 XScore 时整块不可见**：主容器 `SetActive` 与 `Show` 的布局门控漏了 `ShowXScore`，关掉进度、只留 XScore 会让整条栈隐藏；两处改用新增的 `Settings.AnyStackedTextVisible`
 - **关掉精度/X精度后 XScore 不更新**：精度补丁（`ScrMistakesCalcAccPatch` / `ScrMarginCalcAccPatch`）与逐格补丁只按 `ShowAccuracy || ShowXAccuracy` 注册，两者都关时 XScore 冻结在初始空串；`ShowXScore` 现已并入这些注册门控
-- **「仅潜力值」模式下主文本行残留（冻结旧值）**：`SetDualText` 在 Potential 模式只写 `P.*` 文本、永不写主文本，但 `IsJongyeolElementEnabled` 的主元素门控不看 `*TextType` —— 主文本行继续占着栈位，且游戏中途从当前值切到仅潜力值后主文本永远停在切换前的旧值。主行现随模式隐藏（coop 例外：潜力值内联进主文本，主行恒显）
+- **「仅潜力值」模式下主文本行残留（冻结旧值）**：`SetDualText` 在 Potential 模式只写 `P.*` 文本、永不写主文本，但 `IsExtendedElementEnabled` 的主元素门控不看 `*TextType` —— 主文本行继续占着栈位，且游戏中途从当前值切到仅潜力值后主文本永远停在切换前的旧值。主行现随模式隐藏（coop 例外：潜力值内联进主文本，主行恒显）
 - **coop 潜力 X 精度分母错用 `seqID`**：`SetXAccuracy` 直接把 `seqID` 当已判定格数外推，未经 `GetJudgedTiles` 扣除 Midspin（r149+），含 Midspin 的图里潜力 X 精度有偏差；现与单人路径一致
 - **XScore 满分途中显示 `MAX--2`（结算才恢复）**：游戏源码 `scrPlanet.cs` 里 `AddHit`（我们的更新在其内部的 `CalculatePercentAcc` 后缀触发，`hitMarginsCount` 已含本次）先于 `MoveToNextFloor` 更新 `currentSeqID`——打击瞬间 `seqID` 恒落后一格，`judged = seqID − midspin` 少算一格，满分会显示负的 MAX 差值，直到通关时序落定才变回 `MAX-0`。`GetJudgedTiles` 改为对 `hitMarginsCount` 求和（与 XScore 同一瞬间读取、天然自洽），不再依赖 `seqID`；检查点重试时游戏清零 `hitMarginsCount`（r150 2026-09-13 起在 `scnGame.Play` 里显式调用 `marginTracker.Reset()`），求和式随之归零，与原生 acc 重开同口径
 - **XScore 的 MAX−n 与游戏结算完全同口径**：r150 结算界面公式为 `xScore (MAX-{maxXScore − xScore})`（`DetailedResults.cs:92`，普通局 num7=0）。现反射直读原生 `xScore`/`maxXScore`（公开成员，反射以过 compat-r148 编译门禁），实时显示为 `maxXScore − xScore − 2×剩余玩家打击格`——结算时剩余为 0、与游戏逐字相等；开局为 0；TooEarly 这类不前进格子的多余按压不影响分母（此前两版分母分别把 auto 地板算多、把多余按压算多，实测与结算差 +2 / +16）。潜力值 = 剩余玩家打击格全 XPerfect 的收敛值，目标是全图满分常量。另在 `MoveToNextFloor` 后缀补一次同帧刷新，消除 `currentSeqID` 滞后一格造成的瞬间毛刺
@@ -24,8 +24,8 @@
 
 ### Refactor
 
-- **移除 AssetBundle 管线，默认字体改为内嵌自释放**：bundle 里实际只有一份 698KB 的 OTF 字体和一个三个 Image 全部使用 Unity 内置 `UISprite` 的 prefab —— 却为此维护着一个 Unity 编辑器工程、三份 bundle 二进制（其中 `AssetBundles2022` 与 `AssetBundles6000` 字节完全相同且 manifest 都写着 `UnityVersion: 6000.3.16f1`，双包拆分早已名存实亡）以及一份 4.29MB 的 `jipperresourcepackbundle` 死资产。现在：字体作为 `EmbeddedResource` 直接内嵌主 DLL（不经压缩，无需打包脚本、无 gitignored 构建输入、全新克隆零额外步骤），首次运行释放到 `ModPath\assets\`——仅写缺失文件，用户替换过的永不覆盖，`.tmp` + `Move` 原子落盘；进度条改为纯代码构建，逐字段对齐原 prefab（子物体顺序、锚点、pivot、尺寸、颜色、Sliced 类型）。整个 `JipperOverlayer-Unity`（63 个文件、约 44MB）与全部 bundle 产物删除，`BundleLoader` 由 `AssetLoader` 取代，CI 打包步骤与 README 同步精简
-- **清理与防御**：`AssetBundles/`（无后缀）目录及其 4.29MB `jipperresourcepackbundle` 运行时零引用，已一并清除；代码重建的进度条在取不到 Unity 内置 `UISprite` 时退化为直角矩形并记日志，不再静默出错（原 prefab 的 Sliced 类型与 11px 九宫格边框在 14px 高的元素上本就退化为直角，此处保持原观感不变）
+- **移除 AssetBundle 管线，默认字体改为内嵌自释放**：旧方案只有一个 698KB 的 OTF 字体和一个三个 Image 全部使用 Unity 内置 `UISprite` 的 prefab，却为此维护着一个 Unity 编辑器工程、三份 bundle 二进制（其中两份字节完全相同且 manifest 都写着 `UnityVersion: 6000.3.16f1`，双包拆分早已名存实亡）以及一份 4.29MB 的 bundle 死资产。现在：字体作为 `EmbeddedResource` 直接内嵌主 DLL（不经压缩，无需打包脚本、无 gitignored 构建输入、全新克隆零额外步骤），首次运行释放到 `ModPath\assets\`——仅写缺失文件，用户替换过的永不覆盖，`.tmp` + `Move` 原子落盘；进度条改为纯代码构建，逐字段对齐原 prefab（子物体顺序、锚点、pivot、尺寸、颜色、Sliced 类型）。整个 Unity 编辑器工程（63 个文件、约 44MB）与全部 bundle 产物删除，`BundleLoader` 由 `AssetLoader` 取代，CI 打包步骤与 README 同步精简
+- **清理与防御**：`AssetBundles/`（无后缀）目录及其 4.29MB bundle 死资产运行时零引用，已一并清除；代码重建的进度条在取不到 Unity 内置 `UISprite` 时退化为直角矩形并记日志，不再静默出错（原 prefab 的 Sliced 类型与 11px 九宫格边框在 14px 高的元素上本就退化为直角，此处保持原观感不变）
 
 ## v1.1.5 — 2026.09.12
 
@@ -33,7 +33,7 @@
 
 - **Judgement timing window display** (PR #5 by Wang125510, closes #4): four judgement tiers (optional XPerfect / Perfect / Great / Good) shown as ±milliseconds appended under the BPM block, computed through the game's own boundary function so the numbers match real judgement exactly (on r148+external XPerfect mod the X row follows the mod's `max(15° × marginScale, 16.67 ms)`; on r149+ it reads the native boundary, which after the r150 hotfix is `max(12.5° × marginScale, 16.67 ms)` and scales with pitch). Adds the `ShowTimingWindow` toggle, four customizable tier labels, and EN/KO/CN localization
 - **One build for r148 and r150** (`GameCompat` / `HitMarginCompat`): every r150 breaking change is absorbed by runtime probing — the 12→16-value `HitMargin` enum is resolved by name (no compile-time constants anywhere), `GetAdjustedAngleBoundaryInDeg` is bound per actual signature, the removed `scrMisc.GetHitMargin` is replaced by version-selected `GetHitMarginInDeg`/`GetHitMarginInSec` patches, and `CalculatePercentAcc` picks its overload at runtime. The source compiles clean against both DLL sets; `VerifyGameApi` now checks signatures and version-disjoint groups instead of names only, and CI gained an r148-baseline gate job plus API verification on both
-- **Jongyeol master switch removed**: the six extra texts (FPS / Author / State / Death / Start / Timing) are now independent toggles sharing one stack and one order editor with the main texts; EL-perfect combo, orange combo, pseudo-BPM and hide-debug became standalone behavior toggles (orange combo now also works in the normal combo path); new explicit style toggles `DetailedProgress` (cur/total \[-remaining\]) and `TimeDecimals`; decimal precision defaults to 2 and applies to all texts. Legacy configs migrate once based on the presence of the old `JongyeolMode` key — ex-Jongyeol users keep their look, ex-normal users keep theirs, and the migration never re-fires after the first save
+- **ExtendedOverlay master switch removed**: the six extra texts (FPS / Author / State / Death / Start / Timing) are now independent toggles sharing one stack and one order editor with the main texts; EL-perfect combo, orange combo, pseudo-BPM and hide-debug became standalone behavior toggles (orange combo now also works in the normal combo path); new explicit style toggles `DetailedProgress` (cur/total \[-remaining\]) and `TimeDecimals`; decimal precision defaults to 2 and applies to all texts. Legacy configs migrate once based on the presence of the old `ExtendedOverlayMode` key — ex-ExtendedOverlay users keep their look, ex-normal users keep theirs, and the migration never re-fires after the first save
 
 ### Bug Fixes
 
@@ -42,7 +42,7 @@
 - **Midspin keeps combo** on r149+: midspins no longer reset the combo or trigger the non-perfect title
 - **XPerfect colour follows the game on r150** (`colourXPerfect`, white by default) instead of the external mod's blue `#4DCCFF`, which remains the r148 fallback
 - **Timing data flow**: the hit-margin patches are now applied unconditionally with the `ShowTiming` gate inside `UpdateTiming` — previously the patch only mounted if a `RefreshPatches` happened after the toggle, leaving the Timing text frozen until some other switch was flipped; `_timings` also self-initializes
-- **Settings migration is one-shot**: the legacy-Jongyeol migration only runs while the old `JongyeolMode` key is still present in the JSON — a missing key no longer re-disables the user's toggles on every launch; the XML fallback also migrates before serializing (its results previously never reached disk)
+- **Settings migration is one-shot**: the legacy-ExtendedOverlay migration only runs while the old `ExtendedOverlayMode` key is still present in the JSON — a missing key no longer re-disables the user's toggles on every launch; the XML fallback also migrates before serializing (its results previously never reached disk)
 - **Stack layout guard**: `Show()` now lays out the text stack when any stackable element is enabled — previously an Accuracy-only setup never positioned its texts
 
 - **XPerfect probe hardening**: `EnsureInitialized` wraps the UMM probe in try/catch and permanently disables probing when the UnityModManager assembly is absent (pure MelonLoader installs), instead of throwing once per frame
@@ -50,9 +50,9 @@
 - **Best-record multiplier key**: `LastMultiplier` now uses song pitch only — planet speed (which drifts mid-level with BPM events) no longer splits one map's best records across multiple keys; attempt counting already used pitch-only
 - **Repository.json update source**: the download URL now points at the actually published `JipperOverlayer-UMM.zip` release asset
 - **Lazy patch poller busy-wait**: the 100 ms `Task.Delay` moved outside the scene-loading branch, so the background loop yields during scene loads instead of spinning
-- **Time-text color NaN guards**: all six `time / totalTime` divisions (Overlay + JongyeolModule, music/map time) fall back to white when the total duration is unavailable
+- **Time-text color NaN guards**: all six `time / totalTime` divisions (Overlay + ExtendedOverlayModule, music/map time) fall back to white when the total duration is unavailable
 - **Custom labels apply instantly**: editing any of the 31 labels (including while paused) forces a full overlay text refresh via the new `Overlay.RefreshAllTexts` / `IOverlayTextManager.DirtyTextCaches` — previously Checkpoint/Best/BPM/TimingScale/Death/Author/Timing edits stayed stale until their underlying value next changed
-- **Combo title state consistency**: `Show()` syncs the custom main label on fresh starts (checkpoint keeps keep the alt title as designed); label edits respect the Jongyeol alt-title state via the new `IsAltComboTitle`
+- **Combo title state consistency**: `Show()` syncs the custom main label on fresh starts (checkpoint keeps keep the alt title as designed); label edits respect the ExtendedOverlay alt-title state via the new `IsAltComboTitle`
 - **Language preset buttons refresh**: applying the EN/KO/CN presets now routes through the overlay refresh path
 - **Out-of-range language clamp**: `Settings.Load` clamps a hand-edited `CurrentLanguage` back to EN/KO/CN instead of crashing every GUI draw
 
@@ -127,7 +127,7 @@
 
 ### Bug Fixes
 
-- **Jongyeol `song.time` log spam**: added `_lastMusicTimeSec` guard to `UpdateTime()`, preventing per-frame `AudioSource.time` access when `song.clip` is null (r142+ levels without standard audio clips); log no longer flooded with Unity warnings
+- **ExtendedOverlay `song.time` log spam**: added `_lastMusicTimeSec` guard to `UpdateTime()`, preventing per-frame `AudioSource.time` access when `song.clip` is null (r142+ levels without standard audio clips); log no longer flooded with Unity warnings
 - **v136 XPerfect per-player fallback**: when XPerfect doesn't provide `GetPlayerXPerfectCount` methods (v136), per-player getters now redirect to main static values instead of always returning 0
 - **DetectApiVersion static property binding**: fixed `CreatePropertyGetter<T, F>` → `CreateStaticPropertyGetter<TField>` for `ADOBase.playerManager` (was throwing on r14x, causing version detection to fall back to v136 path and breaking judgement/XAccuracy display)
 
@@ -147,8 +147,8 @@
 
 ### Refactors
 
-- **Jongyeol State/Death/PurePerfect via `IOverlayTextManager`**: moved all three Jongyeol-mode helper methods (`UpdateDeath`, `UpdateState`, `CheckPurePerfect`, `GetTooJudgement`) out of `JongyeolModule` and into `IOverlayTextManager`; both `OverlayTextManagerNormal` and `OverlayTextManagerCoop` now implement them, enabling full coop-aware Jongyeol display
-- **Coop Jongyeol Death/State**: `OverlayTextManagerCoop` now renders per-player death counts and state labels in each player's color, with `IsPurePerfect` checked independently per player
+- **ExtendedOverlay State/Death/PurePerfect via `IOverlayTextManager`**: moved all three Extended-overlay helper methods (`UpdateDeath`, `UpdateState`, `CheckPurePerfect`, `GetTooJudgement`) out of `ExtendedOverlayModule` and into `IOverlayTextManager`; both `OverlayTextManagerNormal` and `OverlayTextManagerCoop` now implement them, enabling full coop-aware ExtendedOverlay display
+- **Coop ExtendedOverlay Death/State**: `OverlayTextManagerCoop` now renders per-player death counts and state labels in each player's color, with `IsPurePerfect` checked independently per player
 - **`_mono` field cache**: `OverlayMono` component reference stored as `_mono` field at construction; replaces repeated `GetComponent<OverlayMono>()` calls in `UpdateCombo`, `Show()`, and `Hide()`
 - **Static `StringBuilder` pools**: `_judgementSb`, `_attemptSb`, `_bpmSb`, `_comboSb`, `_timingSb` declared as static fields; eliminates per-frame heap allocations across `BuildJudgementString`, `UpdateAttempts`, `BuildBpmText`, `UpdateCombo`, and `UpdateTimingScale`
 - **`UpdateTimingScale` early-exit**: value cached in `_lastTimingScale`; text rebuild skipped when scale changes less than 0.001%
@@ -158,8 +158,8 @@
 ## v1.1.0 — 2026.06.02
 
 ### Features
-- Full Jongyeol color customization: 3 gradients (JCombo/JDeath/JTiming) + 11 static colors (8 states + FPS/Author/Start)
-- Display order: reorder main stack elements with ▲▼ (General 7 items, Jongyeol 13 items)
+- Full ExtendedOverlay color customization: 3 gradients (JCombo/JDeath/JTiming) + 11 static colors (8 states + FPS/Author/Start)
+- Display order: reorder main stack elements with ▲▼ (General 7 items, ExtendedOverlay 13 items)
 - BPM line order: reorder TBPM/CBPM/KPS lines independently
 - BPM line visibility: per-line ✓ toggle to show/hide each BPM line
 - Attempt line order: swap Attempt/Full Attempt display order
@@ -168,7 +168,7 @@
 ### Refactors
 - Settings folder namespace: JipperOverlayer.Overlayer.Settings → JipperOverlayer.Overlayer (fixes Settings type collision)
 - DrawReorderList helper: unified ▲▼/✓ UI for all order lists, 3 callers share 1 implementation (-45 lines)
-- BPM text building: extracted shared BuildBpmText() static method, used by both General and Jongyeol mode
+- BPM text building: extracted shared BuildBpmText() static method, used by both General and Extended overlay
 
 ### Bug Fixes
 - ColorPerDictionary.GetColor cache: added noCache parameter for static color updates
@@ -210,7 +210,7 @@ Add optional integration with XPerfect mod:
 - Move Attempt text to x=550 in multiplayer mode to avoid overlap
 - In Show(), set up SetupLocationJudgement first, then UpdateJudgement
 
-- Title text updates in real time, pausing switching Jongyeol does not lose text, DecimalPrecision injection, code cleanup
+- Title text updates in real time, pausing switching ExtendedOverlay does not lose text, DecimalPrecision injection, code cleanup
 
 ## v1.0.6 — 2026-05-30
 
@@ -223,19 +223,19 @@ Add optional integration with XPerfect mod:
 ### Features
 - Customizable text labels: all overlay labels can be customized via Custom Labels settings panel
 - Label presets: English / Korean / Chinese one-click presets
-- FPS refresh rate slider (0.05~1.0s) for Jongyeol mode
-- Settings UI reorganized with collapsible panels (General/Display/Jongyeol/Alignment/Labels)
+- FPS refresh rate slider (0.05~1.0s) for Extended overlay
+- Settings UI reorganized with collapsible panels (General/Display/ExtendedOverlay/Alignment/Labels)
 
 ### Refactors
-- Replaced JOverlay inheritance with JongyeolModule composition (-405 lines)
+- Replaced overlay inheritance with ExtendedOverlayModule composition (-405 lines)
 - Removed all unused virtual keywords (Overlay 13, OverlayTextManagerCoop 4, OverlayTextManagerNormal 3)
 - Renamed YellowCombo → AllowELCombo for accurate naming (EL = Early/Late judgment)
 - Settings.OnGUI split into 5 collapsible sections with sub-folders
 
 ### Bug Fixes
-- PlanetMoveToNextFloorPatch: include Jongyeol settings in registration condition
-- JCombo patches: require ShowCombo guard
-- Show(): call SetupLocationMain when Jongyeol is active regardless of standard settings
+- PlanetMoveToNextFloorPatch: include ExtendedOverlay settings in registration condition
+- Combo patches: require ShowCombo guard
+- Show(): call SetupLocationMain when ExtendedOverlay is active regardless of standard settings
 - RefreshVisibility: actively refresh BPM/Combo/Judgement/TimingScale/ProgressBar when toggled on
 - Fix UpdateDeath division-by-zero when currentSeqID == StartTile
 - Fix GUI.changed false-positive triggering unnecessary overlay updates
@@ -253,20 +253,20 @@ Same as v1.0.4, preview release for testing.
 ## v1.0.4 — 2026-05-30
 
 ### Refactors
-- Replaced JOverlay inheritance with JongyeolModule composition (-405 lines)
-  - Deleted JOverlay.cs, JOverlayTextManagerNormal.cs, JOverlayTextManagerCoop.cs, IJOverlayTextManager.cs
-  - Created JongyeolModule.cs as composable module
-  - Overlay fields changed from protected to internal for JongyeolModule access
+- Replaced overlay inheritance with ExtendedOverlayModule composition (-405 lines)
+  - Deleted overlay base classes from the old extended module layout
+  - Created ExtendedOverlayModule.cs as composable module
+  - Overlay fields changed from protected to internal for ExtendedOverlayModule access
   - PurePerfectColor changed to public static readonly
 - Removed all unused virtual keywords (Overlay 13, OverlayTextManagerCoop 4, OverlayTextManagerNormal 3)
-- Removed redundant Jbpm.BpmColorMax wrapper; callers use Main.Settings.BpmColorMax directly
+- Removed redundant BpmSettings.BpmColorMax wrapper; callers use Main.Settings.BpmColorMax directly
 - Renamed YellowCombo → AllowELCombo for accurate naming (EL = Early/Late judgment)
 - Removed redundant UpdateState() call in RdcSetAutoPatch
 
 ### Bug Fixes
-- PlanetMoveToNextFloorPatch: include Jongyeol settings in registration condition so State/Death/Start/Timing update when all standard settings are off
-- JCombo patches: require ShowCombo to prevent combo updating when disabled
-- Show(): call SetupLocationMain when Jongyeol is active regardless of standard settings
+- PlanetMoveToNextFloorPatch: include ExtendedOverlay settings in registration condition so State/Death/Start/Timing update when all standard settings are off
+- Combo patches: require ShowCombo to prevent combo updating when disabled
+- Show(): call SetupLocationMain when ExtendedOverlay is active regardless of standard settings
 - RefreshVisibility: actively refresh BPM/Combo/Judgement/TimingScale/ProgressBar when toggled on
 
 ## v1.0.2 — 2026-05-29

@@ -1,6 +1,6 @@
-namespace JipperOverlayer.Overlayer.Jongyeol;
+namespace JipperOverlayer.Overlayer.ExtendedOverlay;
 
-public static class Jbpm
+public static class BpmSettings
 {
     public static bool CheckPseudo
     {

@@ -1,4 +1,4 @@
-using JipperOverlayer.Overlayer.Jongyeol;
+using JipperOverlayer.Overlayer.ExtendedOverlay;
 using JipperOverlayer.Overlayer.Util;
 using System;
 using System.Collections.Generic;
@@ -34,8 +34,8 @@ public class Overlay
     public TextMeshProUGUI BPMText;
     public TextMeshProUGUI[] JudgementTexts = new TextMeshProUGUI[4];
     public TextMeshProUGUI TimingScaleText;
-    public TextMeshProUGUI DeathText;   // set by JongyeolModule.InitializeExtraTexts
-    public TextMeshProUGUI StateText;   // set by JongyeolModule.InitializeExtraTexts
+    public TextMeshProUGUI DeathText;   // set by ExtendedOverlayModule.InitializeExtraTexts
+    public TextMeshProUGUI StateText;   // set by ExtendedOverlayModule.InitializeExtraTexts
     public ProgressBar ProgressBar;
     public static readonly Color PurePerfectColor = new(1, 0.8549019607843137f, 0);
     public int[] Hit;
@@ -67,7 +67,7 @@ public class Overlay
     public float LastMultiplier = 1f;
     internal string _musicTimeLabel;
     internal string _mapTimeLabel;
-    public JongyeolModule Jongyeol;
+    public ExtendedOverlayModule ExtendedOverlay;
     internal static readonly StringBuilder _textSb = new(256);
     private static readonly StringBuilder _judgementSb = new(128);
     private static readonly StringBuilder _attemptSb = new(64);
@@ -80,14 +80,14 @@ public class Overlay
     private OverlayMono _mono;
 
     private static readonly IReadOnlyList<TextMeshProUGUI> _emptyTexts = Array.Empty<TextMeshProUGUI>();
-    protected IReadOnlyList<TextMeshProUGUI> ExtraTexts => Jongyeol?.ExtraTexts ?? _emptyTexts;
+    protected IReadOnlyList<TextMeshProUGUI> ExtraTexts => ExtendedOverlay?.ExtraTexts ?? _emptyTexts;
 
     public Overlay()
     {
         Instance = this;
-        // Jongyeol 模块常驻：它承载的扩展文本（FPS/Author/State/Death/Start/Timing）
+        // ExtendedOverlay 模块常驻：它承载的扩展文本（FPS/Author/State/Death/Start/Timing）
         // 已拆成独立开关，不再是互斥的整体模式
-        Jongyeol = new JongyeolModule(this);
+        ExtendedOverlay = new ExtendedOverlayModule(this);
         GameObject = new GameObject("JipperOverlayer Overlay");
         Canvas = GameObject.AddComponent<Canvas>();
         Canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -103,7 +103,7 @@ public class Overlay
         InitializeProgressBar();
         InitializeTimingScale();
         InitializeAttempt();
-        Jongyeol?.InitializeExtraTexts();
+        ExtendedOverlay?.InitializeExtraTexts();
         OnChangePlayers();
         UpdateSize();
         _mono = GameObject.AddComponent<OverlayMono>();
@@ -128,7 +128,7 @@ public class Overlay
             ? new OverlayTextManagerCoop(this)
             : new OverlayTextManagerNormal();
         // 全局小数位仅作用于扩展文本（FPS/开始进度）；主文本各有独立小数位设置
-        Jongyeol.DecimalPrecision = s.JongyeolDecimalPrecision;
+        ExtendedOverlay.DecimalPrecision = s.ExtendedDecimalPrecision;
     }
 
     protected void InitializeStatus()
@@ -163,9 +163,9 @@ public class Overlay
 
     public void SetupLocationMain()
     {
-        // 统一的栈式布局：全部 18 个可栈排元素共栈、共顺序（JongyeolDisplayOrder），
-        // 未启用的元素自然跳过。原 GeneralDisplayOrder 路径与 Jongyeol 路径本就是同一布局。
-        Jongyeol.SetupLocation();
+        // 统一的栈式布局：全部 18 个可栈排元素共栈、共顺序（ExtendedDisplayOrder），
+        // 未启用的元素自然跳过。原 GeneralDisplayOrder 路径与 ExtendedOverlay 路径本就是同一布局。
+        ExtendedOverlay.SetupLocation();
     }
 
     public void SetupLocationJudgement()
@@ -629,11 +629,11 @@ public class Overlay
         if (s.ShowCheckpoint) UpdateCheckPointText();
         if (s.ShowProgressBar) UpdateProgressBar();
         if (s.ShowBest) OverlayTextManager?.UpdateBest(this);
-        Jongyeol?.CheckPurePerfect();
-        Jongyeol?.UpdateState();
-        Jongyeol?.UpdateDeath();
-        Jongyeol?.UpdateStart();
-        Jongyeol?.UpdateColors();
+        ExtendedOverlay?.CheckPurePerfect();
+        ExtendedOverlay?.UpdateState();
+        ExtendedOverlay?.UpdateDeath();
+        ExtendedOverlay?.UpdateStart();
+        ExtendedOverlay?.UpdateColors();
     }
 
     public void UpdateProgressBar()
@@ -785,7 +785,7 @@ public class Overlay
     {
         // 统一走模块实现：它是原两份实现的超集（10fps 节流、缓存、无音频时回退地图时间），
         // 唯一可见差异是时间显示带一位小数（FormatWithDecimals）
-        Jongyeol.UpdateTime();
+        ExtendedOverlay.UpdateTime();
     }
 
 
@@ -818,8 +818,8 @@ public class Overlay
     public Color UpdateComboColor(int combo)
     {
         var s = Main.Settings;
-        // Jongyeol 配色（按完美率渐变）只在开启宽松连击时接管，普通模式保持原渐变
-        if (s.AllowELCombo) return Jongyeol.UpdateComboColor(combo);
+        // ExtendedOverlay 配色（按完美率渐变）只在开启宽松连击时接管，普通模式保持原渐变
+        if (s.AllowELCombo) return ExtendedOverlay.UpdateComboColor(combo);
         if (combo > s.ComboColorMax) combo = s.ComboColorMax;
         return s.Colors.GetComboColor((float)combo / s.ComboColorMax);
     }
@@ -828,14 +828,14 @@ public class Overlay
     public void OnNonPerfectHit()
     {
         var s = Main.Settings;
-        if (s.AllowELCombo || s.AllowOrangeCombo) Jongyeol.OnNonPerfectHit();
+        if (s.AllowELCombo || s.AllowOrangeCombo) ExtendedOverlay.OnNonPerfectHit();
     }
 
     public void UpdateBPM()
     {
         // 统一走模块实现：它是普通版的重集——CheckPseudo 关闭时输出与普通版一致，
         // 开启时附加伪 BPM 检测与 KPS 着色
-        Jongyeol.UpdateBPM();
+        ExtendedOverlay.UpdateBPM();
     }
 
     /// <summary>判定时间窗显示值（整毫秒）是否变化；变化时记录新值。按显示值比较，显示未变就不触发 TMP 重建。</summary>
@@ -952,7 +952,7 @@ public class Overlay
     internal void RefreshAllTexts()
     {
         if (ComboTitle)
-            ComboTitle.text = Jongyeol is { IsAltComboTitle: true }
+            ComboTitle.text = ExtendedOverlay is { IsAltComboTitle: true }
                 ? Main.Settings.Labels.ComboTitleAlt
                 : Main.Settings.Labels.ComboTitle;
         RefreshTimeLabels();
@@ -961,10 +961,10 @@ public class Overlay
         _lastTimingScale = -1;
         DirtyBpmCache();
         OverlayTextManager?.DirtyTextCaches();
-        Jongyeol?.DirtyTextCaches();
-        Jongyeol?.UpdateAuthor();
-        Jongyeol?.RefreshTiming();
-        UpdateProgress();     // 进度/检查点/进度条/最佳 + Jongyeol State/Death/Start/Colors
+        ExtendedOverlay?.DirtyTextCaches();
+        ExtendedOverlay?.UpdateAuthor();
+        ExtendedOverlay?.RefreshTiming();
+        UpdateProgress();     // 进度/检查点/进度条/最佳 + ExtendedOverlay State/Death/Start/Colors
         UpdateTime();
         UpdateAccuracy();
         UpdateBPM();
@@ -977,10 +977,10 @@ public class Overlay
     public void Show(int floor, bool suppressNativeUI = false)
     {
         var s = Main.Settings;
-        Jongyeol?.OnShow(floor);
+        ExtendedOverlay?.OnShow(floor);
         // 每次显示都同步自定义标签——覆盖层隐藏期间编辑的标签也能生效。
-        // Jongyeol 模式下与 OnShow 同条件：checkpoint 续命刻意保留备用标题，不能在此覆盖。
-        if (ComboTitle && (Jongyeol == null || GameRefs.CheckpointsUsed == 0))
+        // 扩展叠加层下与 OnShow 同条件：checkpoint 续命刻意保留备用标题，不能在此覆盖。
+        if (ComboTitle && (ExtendedOverlay == null || GameRefs.CheckpointsUsed == 0))
             ComboTitle.text = s.Labels.ComboTitle;
         if (_lastSavedStartProgress != -1 && _lastSavedFromStart)
         {
@@ -1054,7 +1054,7 @@ public class Overlay
 
     public void Hide()
     {
-        Jongyeol?.OnHide();
+        ExtendedOverlay?.OnHide();
         if (Main.Settings.PatchBetaWatermark) ResetBetaWatermark();
         if (Main.Settings.RepositionAutoText) RepositionAutoText(false);
         _autoText = null;

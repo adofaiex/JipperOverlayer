@@ -15,7 +15,7 @@ An in-game overlay mod for **A Dance of Fire and Ice (ADOFAI)** that displays pr
 - **Timing Scale** — Current timing scale percentage
 - **Attempt Tracker** — Per-map attempt count with persistent storage
 - **Progress Bar** — Visual progress indicator
-- **Jongyeol Mode** — Extended overlay with FPS, State, Death count, Start position, Timing analysis, Debug text hiding
+- **Extended Overlay** — Extended overlay with FPS, State, Death count, Start position, Timing analysis, Debug text hiding
 - **Co-op Support** — Per-player display for multiplayer
 - **Text Effects** — Global shadow (TMP Underlay) and outline with toggles, RGBA color pickers, Width/Softness sliders
 - **Per-Section Fonts** — Independent font and font-size per overlay slot (Main, BPM, Judgement, Combo, Timing, Attempt)
@@ -110,7 +110,5 @@ This project uses GitHub Actions for automated builds:
 
 ## License
 
-- Primarily **MIT License** — see [LICENSE](./LICENSE.txt).
-
-- Code adapted from [JipperResourcePack](https://github.com/Jongye0l/JipperResourcePack) by Jongyeol is under **BSD 3-Clause** — see [LICENSE-BSD](./LICENSE-BSD).
+- **MIT License** — see [LICENSE](./LICENSE.txt).
 

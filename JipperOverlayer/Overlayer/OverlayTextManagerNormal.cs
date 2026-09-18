@@ -38,7 +38,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             float acc = VersionSafe.GetPercentAcc();
             float maxAcc = 1 + (seqID - overlay.NoCheckStartTile + 1) * 0.0001f;
             float potentialAcc = AccuracyMath.GetPotentialAccuracy(hits, acc, judged, remaining);
-            SetDualText(s.AccuracyTextType, overlay.AccuracyText, overlay.Jongyeol?.PotentialAccuracyText, labels.Accuracy,
+            SetDualText(s.AccuracyTextType, overlay.AccuracyText, overlay.ExtendedOverlay?.PotentialAccuracyText, labels.Accuracy,
                 Math.Round(acc * 100, s.AccuracyDecimal) + "%", Math.Round(potentialAcc * 100, s.AccuracyDecimal) + "%",
                 t => t.color = s.Colors.GetAccuracyColor(xacc == 1 ? 1 : acc / maxAcc, xacc == 1),
                 t => t.color = s.Colors.GetAccuracyColor(xacc == 1 ? 1 : potentialAcc / (maxAcc + remaining * 0.0001f), xacc == 1));
@@ -46,7 +46,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         if (s.ShowXAccuracy)
         {
             float potentialXAcc = AccuracyMath.GetPotentialXAccuracy(xacc, judged, remaining);
-            SetDualText(s.XAccuracyTextType, overlay.XAccuracyText, overlay.Jongyeol?.PotentialXAccuracyText, labels.XAccuracy,
+            SetDualText(s.XAccuracyTextType, overlay.XAccuracyText, overlay.ExtendedOverlay?.PotentialXAccuracyText, labels.XAccuracy,
                 Math.Round(xacc * 100, s.XAccuracyDecimal) + "%", Math.Round(potentialXAcc * 100, s.XAccuracyDecimal) + "%",
                 t => t.color = s.Colors.GetXAccuracyColor(xacc, xacc == 1),
                 t => t.color = s.Colors.GetXAccuracyColor(potentialXAcc, potentialXAcc == 1));
@@ -95,7 +95,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             potentialTotal = soFarMax + remaining * AccuracyMath.XPerfectValue;
             potentialX = x + remaining * AccuracyMath.XPerfectValue;
         }
-        SetDualText(s.XScorePotentialType, overlay.Jongyeol?.XScoreText, overlay.Jongyeol?.PotentialXScoreText, "XScore",
+        SetDualText(s.XScorePotentialType, overlay.ExtendedOverlay?.XScoreText, overlay.ExtendedOverlay?.PotentialXScoreText, "XScore",
             AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType),
             AccuracyMath.GetXScoreText(potentialX, potentialTotal, s.XScoreTextType, potential: true),
             t => t.color = s.Colors.XScore.GetColor(soFarMax == 0 ? 1 : (float)x / soFarMax),
@@ -105,7 +105,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
     public void UpdateProgress(Overlay overlay)
     {
         var labels = Main.Settings.Labels;
-        // 详细进度（当前/总数 [-剩余]）为独立样式开关，原属 Jongyeol 模式
+        // 详细进度（当前/总数 [-剩余]）为独立样式开关，原属 扩展叠加层
         if (Main.Settings.DetailedProgress)
         {
             int cur = GameRefs.CurrentSeqID;
@@ -194,7 +194,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         overlay.BestText.color = Main.Settings.Colors.GetBestColor(best);
     }
 
-    // ===== Jongyeol-mode helpers (single-player) =====
+    // ===== Extended-overlay helpers (single-player) =====
 
     private int _deathCount;
     private int _lastDeath = -1;

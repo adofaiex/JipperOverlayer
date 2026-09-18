@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using Newtonsoft.Json;
 using JipperOverlayer.Overlayer.Localization;
@@ -28,7 +28,7 @@ public class LabelConfig
     public string ComboTitle = "Perfect";
     public string ComboTitleAlt = "Combo";
 
-    // Jongyeol mode labels
+    // Extended overlay labels
     public string FPS = "FPS";
     public string Author = "Author";
     public string State = "State";
@@ -36,7 +36,7 @@ public class LabelConfig
     public string Start = "Start";
     public string Timing = "Timing";
 
-    // State text (Jongyeol)
+    // State text (ExtendedOverlay)
     public string StateWaiting = "Waiting";
     public string StateAutoTile = "Auto Tile";
     public string StateAuto = "Auto Play";

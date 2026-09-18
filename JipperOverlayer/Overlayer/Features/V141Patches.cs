@@ -12,7 +12,7 @@ internal static class V141Patches
     public static void RegisterAll()
     {
         PatchManager.RegisterPatches(() => Main.Settings.ShowBPM, typeof(ScrPlayerHitBpmPatch));
-        // 宽松连击（EL/Perfect± 计入连击）不再是 Jongyeol 模式专属，作为独立开关存在
+        // 宽松连击（EL/Perfect± 计入连击）不再是 扩展叠加层专属，作为独立开关存在
         PatchManager.RegisterPatches(() => Main.Settings.ShowCombo && !Main.Settings.AllowELCombo, typeof(ScrMarginAddHitComboPatch));
         PatchManager.RegisterPatches(() => Main.Settings.ShowJudgement,
             typeof(ScrMarginAddHitJudgementPatch),

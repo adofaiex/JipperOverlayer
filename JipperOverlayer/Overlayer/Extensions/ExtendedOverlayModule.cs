@@ -4,14 +4,14 @@ using JipperOverlayer.Overlayer.Util;
 using TMPro;
 using UnityEngine;
 
-namespace JipperOverlayer.Overlayer.Jongyeol;
+namespace JipperOverlayer.Overlayer.ExtendedOverlay;
 
-// 原「Jongyeol 模式」的承载模块。总开关移除后它常驻运行，负责：
+// 原「扩展叠加层」的承载模块。总开关移除后它常驻运行，负责：
 //   1. 六个扩展文本（FPS/Author/State/Death/Start/Timing）的创建、布局与更新
-//   2. 统一的栈式布局（全部 18 个可栈排元素，顺序见 Settings.JongyeolDisplayOrder）
+//   2. 统一的栈式布局（全部 18 个可栈排元素，顺序见 Settings.ExtendedDisplayOrder）
 //   3. BPM（含伪 BPM 检测）与时间文本的统一更新实现
 // 各功能由独立设置开关控制，可与普通模式任意搭配。
-public class JongyeolModule
+public class ExtendedOverlayModule
 {
     private readonly Overlay _overlay;
 
@@ -29,10 +29,10 @@ public class JongyeolModule
     private float _lastTiming;
     public int DecimalPrecision = 2;
 
-    /// <summary>Jongyeol 模式下连击标题是否已切换为备用文本（非完美命中后）。</summary>
+    /// <summary>扩展叠加层下连击标题是否已切换为备用文本（非完美命中后）。</summary>
     public bool IsAltComboTitle => _perToCom;
 
-    public JongyeolModule(Overlay overlay)
+    public ExtendedOverlayModule(Overlay overlay)
     {
         _overlay = overlay;
     }
@@ -67,12 +67,12 @@ public class JongyeolModule
 
         _overlay.Checkpoints ??= Overlay.CollectCheckpoints();
 
-        foreach (int elemId in s.JongyeolDisplayOrder)
+        foreach (int elemId in s.ExtendedDisplayOrder)
         {
             var elem = (DisplayElement)elemId;
-            var text = GetJongyeolStackText(elem);
+            var text = GetExtendedStackText(elem);
             if (text == null) continue;
-            bool enabled = IsJongyeolElementEnabled(elem, s, checkAuto);
+            bool enabled = IsExtendedElementEnabled(elem, s, checkAuto);
             SetupText(text, enabled, ref y);
         }
 
@@ -89,7 +89,7 @@ public class JongyeolModule
         _timingsSum = 0;
     }
 
-    TextMeshProUGUI GetJongyeolStackText(DisplayElement elem) => elem switch
+    TextMeshProUGUI GetExtendedStackText(DisplayElement elem) => elem switch
     {
         DisplayElement.FPS => FPSText,
         DisplayElement.Author => AuthorText,
@@ -112,7 +112,7 @@ public class JongyeolModule
         _ => null,
     };
 
-    bool IsJongyeolElementEnabled(DisplayElement elem, Settings s, bool checkAuto)
+    bool IsExtendedElementEnabled(DisplayElement elem, Settings s, bool checkAuto)
     {
         if (elem == DisplayElement.Author)
         {
@@ -288,7 +288,7 @@ public class JongyeolModule
 
     // ===== Overridden Update Methods =====
 
-    // 时间格式跟随独立开关：TimeDecimals 决定是否带一位小数（原 Jongyeol 模式行为）
+    // 时间格式跟随独立开关：TimeDecimals 决定是否带一位小数（原 扩展叠加层行为）
     private static string FmtTime(float time, bool hour)
         => Main.Settings.TimeDecimals
             ? TimeFormatter.FormatWithDecimals(time, hour)
@@ -367,7 +367,7 @@ public class JongyeolModule
         scrFloor floor = GameRefs.CurrentFloor ?? GameRefs.FirstFloor;
         if (floor == null || floor.seqID <= _pseudoFloor) return;
         var bpm = BpmCalculator.Calculate(floor, (float)(GameRefs.SongPitch * VersionSafe.GetPlanetSpeed(GameRefs.ControllerInstance)));
-        bool checkPseudo = Jbpm.CheckPseudo;
+        bool checkPseudo = BpmSettings.CheckPseudo;
         float cbpm = 0;
         int count = 0;
         bool isPseudo = checkPseudo && CheckPseudo(floor, bpm.TileBpm, out cbpm, out count);

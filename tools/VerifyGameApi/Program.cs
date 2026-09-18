@@ -99,8 +99,8 @@ class Program
         MS("MonsterLove.StateMachine.StateBehaviour","ChangeState","newState");
         MS("scnGame","Play","seqID");
         MS("scrMarginTracker","AddHit","hit");
-        // Jongyeol 计时：r148 是 GetHitMargin，r150 拆成 InDeg / InSec —— 参数名各不相同
-        Alt("scrMisc hit-margin fn (Jongyeol timing)", new[] {
+        // ExtendedOverlay 计时：r148 是 GetHitMargin，r150 拆成 InDeg / InSec —— 参数名各不相同
+        Alt("scrMisc hit-margin fn (ExtendedOverlay timing)", new[] {
             ("scrMisc","GetHitMargin",     new[]{ "hitangle","refangle","isCW","bpmTimesSpeed","conductorPitch","marginScale" }),
             ("scrMisc","GetHitMarginInDeg",new[]{ "difficulty","hitAngle","refAngle","clockwise","floorBpm","conductorPitch","marginScale" }),
             ("scrMisc","GetHitMarginInSec",new[]{ "difficulty","timeDiff","floorBpm","conductorPitch","marginScale" }),
