@@ -57,6 +57,7 @@ public class Settings
     public int ExtendedDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
     public bool RemoveNotRequireInAuto = true, CheckPseudo = true, AllowELCombo = true, AllowOrangeCombo = true;
+    public bool ComboTitleAltOnNonPerfect = true;
     public bool PatchBetaWatermark = true, PatchLevelName = true, RepositionAutoText = true;
     public Language CurrentLanguage;
     public int FontIndex;
@@ -390,6 +391,7 @@ public class Settings
                     () => { Colors.Combo = new([(0f, new Color(0.8745f, 0.7098f, 1f)), (1f, new Color(0.7176f, 0.3490f, 1f))]); Colors.Save(); });
                 bool prevReversed = ComboLineReversed;
                 ComboLineReversed = Tog(Tr.Get(Tr.Key.ComboLineReversed), ComboLineReversed);
+                ComboTitleAltOnNonPerfect = Tog(Tr.Get(Tr.Key.ComboTitleAltOnNonPerfect), ComboTitleAltOnNonPerfect);
                 if (prevReversed != ComboLineReversed) Overlayer.Overlay.Instance?.RefreshVisibility();
             }
         });
@@ -1332,12 +1334,32 @@ public class Settings
             var json = File.ReadAllText(path);
             var s = JsonConvert.DeserializeObject<Settings>(json);
             ApplyLegacyExtendedOverlayMigration(s, json);
+            MigrateLegacyDisplayOrder(s, json);
             return s;
         }
         catch (Exception e)
         {
             Loader.Warning($"Failed to load Settings.json: {e.Message}");
             return null;
+        }
+    }
+
+    private static void MigrateLegacyDisplayOrder(Settings s, string json)
+    {
+        try
+        {
+            var jo = JsonConvert.DeserializeObject<JObject>(json);
+            if (jo == null) return;
+            if (s.ExtendedDisplayOrder == null || s.ExtendedDisplayOrder.Length == 0)
+            {
+                var legacy = jo["JongyeolDisplayOrder"]?.ToObject<int[]>();
+                if (legacy != null && legacy.Length > 0)
+                    s.ExtendedDisplayOrder = legacy;
+            }
+        }
+        catch
+        {
+            // ignore migration failures and fall back to defaults
         }
     }
 
