@@ -25,14 +25,16 @@ internal static class GameLifecyclePatches
               Main.Settings.ShowMapTime ||
               Main.Settings.ShowCheckpoint || Main.Settings.ShowBest || Main.Settings.ShowProgressBar ||
               Main.Settings.ShowTimingScale || Main.Settings.ShowAttempt || Main.Settings.ShowFullAttempt ||
-              Main.Settings.ShowState || Main.Settings.ShowDeath || Main.Settings.ShowStart || Main.Settings.ShowTiming,
+              Main.Settings.ShowState || Main.Settings.ShowDeath || Main.Settings.ShowStart || Main.Settings.ShowTiming ||
+              Main.Settings.ShowCombo,
             typeof(PlanetMoveToNextFloorPatch));
 
         // 原先捆绑在 ExtendedOverlay 总开关下的三个补丁，改为各自按所属设置独立门控
         PatchManager.RegisterPatches(() => Main.Settings.HideDebugText, typeof(ScrShowIfDebugUpdatePatch));
         PatchManager.RegisterPatches(() => Main.Settings.RepositionAutoText, typeof(ScrShowIfDebugAwakePatch));
         // auto 切换会影响 State 文本与 checkAuto 类元素（精度/X精度/检查点/最佳）的可见性
-        PatchManager.RegisterPatches(() => Main.Settings.ShowState || Main.Settings.ShowAccuracy ||
+        PatchManager.RegisterPatches(() => Main.Settings.ShowState || Main.Settings.ShowDeath ||
+              Main.Settings.ShowStart || Main.Settings.ShowTiming || Main.Settings.ShowAccuracy ||
               Main.Settings.ShowXAccuracy || Main.Settings.ShowXScore ||
               Main.Settings.ShowCheckpoint || Main.Settings.ShowBest,
             typeof(RdcSetAutoPatch));
@@ -125,7 +127,9 @@ internal static class PlanetMoveToNextFloorPatch
         var overlay = GameLifecycleHelper.GetOverlay();
         if (overlay == null) return;
         var s = Main.Settings;
-        if (s.ShowProgress || s.ShowAccuracy || s.ShowXAccuracy || s.ShowMusicTime || s.ShowMapTime || s.ShowCheckpoint || s.ShowBest || s.ShowProgressBar)
+        if (s.ShowProgress || s.ShowAccuracy || s.ShowXAccuracy || s.ShowMusicTime || s.ShowMapTime
+            || s.ShowCheckpoint || s.ShowBest || s.ShowProgressBar || s.ShowState || s.ShowDeath
+            || s.ShowStart || s.ShowTiming || s.ShowCombo)
             overlay.UpdateProgress(__instance);
         if (s.ShowTimingScale) overlay.UpdateTimingScale();
         if (s.ShowAttempt || s.ShowFullAttempt) overlay.UpdateAttempts();
@@ -154,7 +158,13 @@ internal static class ScrShowIfDebugAwakePatch
     {
         if (!Main.Settings.RepositionAutoText) return;
         var t = __instance.GetComponent<RectTransform>();
-        if (t) t.anchoredPosition = new Vector2(300, t.anchoredPosition.y);
+        if (t)
+        {
+            // RepositionAutoText 会在稍后寻找该对象并把当前坐标当作 original。
+            // Awake 补丁若先直接写 300，original 就会永久被污染，关闭开关也回不去。
+            Overlay.CaptureAutoTextOriginal(__instance, t.anchoredPosition);
+            t.anchoredPosition = new Vector2(300, t.anchoredPosition.y);
+        }
     }
 }
 

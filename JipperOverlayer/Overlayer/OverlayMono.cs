@@ -7,13 +7,24 @@ public class OverlayMono : MonoBehaviour
 {
     public Overlay Overlay;
     private Coroutine _comboAnim;
+    private bool _canvasEnabledState;
+    private bool _canvasStateInitialized;
 
     private void Update()
     {
         if (Overlay == null || !Overlay.GameObject.activeSelf) return;
-        Overlay.UpdateTime();
+        // 没有音乐/地图时间文本时无需每帧进入时间计算与格式化路径。
+        if (Overlay.TimeDisplayNeeded) Overlay.UpdateTime();
         if (Overlay.Canvas)
-            Overlay.Canvas.enabled = !GameRefs.IsPaused;
+        {
+            bool desired = !GameRefs.IsPaused;
+            if (!_canvasStateInitialized || desired != _canvasEnabledState)
+            {
+                Overlay.Canvas.enabled = desired;
+                _canvasEnabledState = desired;
+                _canvasStateInitialized = true;
+            }
+        }
     }
 
     public void StartComboBump()

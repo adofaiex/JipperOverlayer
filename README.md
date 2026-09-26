@@ -12,6 +12,8 @@ An in-game overlay mod for **A Dance of Fire and Ice (ADOFAI)** that displays pr
 - **BPM Display** — Tile BPM, Current BPM, KPS, with pseudo-BPM detection
 - **Combo Counter** — Animated combo display with color gradients
 - **Judgement Display** — Hit margin breakdown (Miss, Bad, Good, Perfect, etc.)
+- **XScore & Potential Values** — Native XScore (r149+), per-player values, and predicted final Accuracy/XAccuracy/XScore
+- **Timing Modes** — Latest hit offset, rolling average, or both; judgement-window readouts in ms
 - **Timing Scale** — Current timing scale percentage
 - **Attempt Tracker** — Per-map attempt count with persistent storage
 - **Progress Bar** — Visual progress indicator
@@ -22,6 +24,9 @@ An in-game overlay mod for **A Dance of Fire and Ice (ADOFAI)** that displays pr
 - **UI Patch Toggles** — Independent switches for Beta watermark, level name position, auto text reposition
 - **Color Editor** — Interactive gradient editor for all overlay colors
 - **XPerfect Integration** — Optional enhanced perfect display via [XPerfect](https://github.com/8100print/XPerfect)
+- **Diagnostics & Font Rescan** — Inspect the detected game API, loader, XPerfect, fonts, and overlay state; copy the report to the clipboard, and rescan `CustomFonts` without restarting
+
+> Install **one** loader variant per game folder (UMM or MelonLoader), not both. They use the same Harmony id and separate mod folders, so installing both can cause duplicate patches and split settings/statistics.
 
 ## Settings UI Languages
 
@@ -63,11 +68,22 @@ ADOFAI/Mods/JipperOverlayer-melon/
 > and self-extracts to `assets/MAPLESTORY_OTF_BOLD.OTF` on first run — only when that file is
 > missing, so a font you replace yourself is never overwritten. The progress bar is built in code.
 
+## Local data
+
+Runtime data is kept beside the loader DLL in the mod folder:
+
+- `Settings.json` — main settings and display order
+- `labels.json` / `colors.json` — custom labels and color gradients
+- `CustomFonts/` — optional `.ttf` / `.otf` files (use **Rescan Fonts** in settings)
+- `Plays.dat` — local attempt/best statistics (with a `.bak` backup)
+
+The settings panel can copy a diagnostics report (detected API, loader, XPerfect, font and overlay state) to the clipboard when reporting a problem.
+
 ## Requirements
 
 - A Dance of Fire and Ice (Steam version)
 - One of: Unity Mod Manager 0.22.14+ **or** MelonLoader
-- Supports game versions v136 and v141+
+- Supports game versions v136 and v141+ (the v136 path is best-effort; CI currently verifies the r148 and r150 API shapes)
 
 ## Build from Source
 
@@ -110,5 +126,5 @@ This project uses GitHub Actions for automated builds:
 
 ## License
 
-- **MIT License** — see [LICENSE](./LICENSE.txt).
+- **MIT License** — see [LICENSE](./LICENSE).
 

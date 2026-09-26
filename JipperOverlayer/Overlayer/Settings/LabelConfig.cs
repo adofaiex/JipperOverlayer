@@ -50,21 +50,29 @@ public class LabelConfig
 
     public void Save()
     {
-        try { File.WriteAllText(Path.Combine(Loader.ModPath, "labels.json"), JsonConvert.SerializeObject(this, Formatting.Indented)); }
+        try { Loader.WriteAllTextAtomic(Path.Combine(Loader.ModPath, "labels.json"), JsonConvert.SerializeObject(this, Formatting.Indented)); }
         catch (Exception e) { Loader.Warning($"Save labels failed: {e.Message}"); }
     }
 
     public static LabelConfig Load()
     {
-        try {
-            string p = Path.Combine(Loader.ModPath, "labels.json");
-            if (File.Exists(p)) {
-                return JsonConvert.DeserializeObject<LabelConfig>(File.ReadAllText(p)) ?? new LabelConfig();
-            }
+        string path = Path.Combine(Loader.ModPath, "labels.json");
+        if (File.Exists(path))
+        {
+            try { return ReadLabelFile(path); }
+            catch (Exception e) { Loader.Warning($"Load labels failed: {e.Message}"); }
         }
-        catch (Exception e) { Loader.Warning($"Load labels failed: {e.Message}"); }
+        string backup = path + ".bak";
+        if (File.Exists(backup))
+        {
+            try { return ReadLabelFile(backup); }
+            catch (Exception e) { Loader.Warning($"Load labels backup failed: {e.Message}"); }
+        }
         return new LabelConfig();
     }
+
+    static LabelConfig ReadLabelFile(string path)
+        => JsonConvert.DeserializeObject<LabelConfig>(File.ReadAllText(path)) ?? new LabelConfig();
 
     public static LabelConfig GetPreset(Language language) => language switch
     {

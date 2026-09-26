@@ -27,7 +27,11 @@ public class PlayCount
         path += ".bak";
         if (!File.Exists(path)) return;
         try { LoadFile(path); }
-        catch (Exception e) { Loader.Warning($"Error loading backup: {e.Message}"); }
+        catch (Exception e)
+        {
+            Loader.Warning($"Error loading backup: {e.Message}");
+            Datas.Clear();
+        }
     }
 
     private static void LoadFile(string path)
@@ -35,6 +39,8 @@ public class PlayCount
         using FileStream fs = File.OpenRead(path);
         int version = fs.ReadByte();
         int count = fs.ReadInt();
+        if (version < 0 || count < 0 || count > 1_000_000)
+            throw new InvalidDataException($"Invalid play data header (version={version}, count={count})");
         for (int i = 0; i < count; i++)
         {
             Hash key = fs.ReadBytes(16);
@@ -75,16 +81,38 @@ public class PlayCount
                 }
                 ms.WriteTo(fs);
             }
-            if (File.Exists(path)) File.Copy(path, path + ".bak", true);
-            File.Delete(path);
-            File.Move(tmpPath, path);
+            if (File.Exists(path))
+            {
+                // 优先用同卷原子替换，避免「已删除旧文件、Move 失败」导致主文件消失。
+                try
+                {
+                    File.Replace(tmpPath, path, path + ".bak", true);
+                    return;
+                }
+                catch (PlatformNotSupportedException) { }
+                catch (NotSupportedException) { }
+                catch (IOException) { }
+                string backup = path + ".bak";
+                if (File.Exists(backup)) File.Delete(backup);
+                File.Move(path, backup);
+                try { File.Move(tmpPath, path); }
+                catch
+                {
+                    if (!File.Exists(path) && File.Exists(backup)) File.Move(backup, path);
+                    throw;
+                }
+            }
+            else
+            {
+                File.Move(tmpPath, path);
+            }
         }
         catch (Exception e) { Loader.Warning($"Error saving play data: {e.Message}"); }
     }
 
     public static PlayData GetData(Hash hash)
     {
-        if (hash.data == null) return null;
+        if (Datas == null || hash.data == null) return null;
         if (!Datas.ContainsKey(hash)) Datas[hash] = new PlayData();
         return Datas[hash];
     }
@@ -105,10 +133,10 @@ public class PlayCount
 
         public void RemoveAttempts(float progress, float multiplier)
         {
-            if (!attempts.TryGetValue((progress, multiplier), out int value)) return;
+            if (!attempts.TryGetValue((progress, multiplier), out int value) || value <= 0) return;
             if (value == 1) attempts.Remove((progress, multiplier));
-            else attempts[(progress, multiplier)]--;
-            totalAttempts--;
+            else attempts[(progress, multiplier)] = value - 1;
+            totalAttempts = Math.Max(0, totalAttempts - 1);
         }
 
         public void SetBest(float start, float cur, float multiplier)
@@ -144,12 +172,14 @@ public class PlayCount
         {
             totalAttempts = stream.ReadInt();
             int size = stream.ReadInt();
+            if (size < 0 || size > 1_000_000) throw new InvalidDataException($"Invalid attempts size: {size}");
             for (int i = 0; i < size; i++)
             {
                 if (version == 0) stream.ReadByte();
                 attempts[(stream.ReadFloat(), stream.ReadFloat())] = stream.ReadInt();
             }
             size = stream.ReadInt();
+            if (size < 0 || size > 1_000_000) throw new InvalidDataException($"Invalid best size: {size}");
             for (int i = 0; i < size; i++)
             {
                 if (version == 0) stream.ReadByte();
@@ -163,11 +193,13 @@ public class PlayCount
             return best.ContainsKey(key) ? best[key] : 0;
         }
 
-        public int GetAttempts(float progress)
+        public int GetAttempts(float progress, float multiplier)
         {
-            var key = (progress, Multiplier);
+            var key = (progress, multiplier);
             return attempts.ContainsKey(key) ? attempts[key] : 0;
         }
+
+        public int GetAttempts(float progress) => GetAttempts(progress, Multiplier);
         public int GetAttempts()
         {
             int sum = 0;
@@ -179,17 +211,48 @@ public class PlayCount
 
     public static Hash GetMapHash()
     {
-        lock (Md5) { return Md5.ComputeHash(ADOBase.isOfficialLevel ? Encoding.UTF8.GetBytes(ADOBase.currentLevel) : GetHash()); }
+        lock (Md5)
+        {
+            byte[] source;
+            if (ADOBase.isOfficialLevel)
+            {
+                string level = ADOBase.currentLevel;
+                if (string.IsNullOrEmpty(level)) return new Hash(null);
+                source = Encoding.UTF8.GetBytes(level);
+            }
+            else
+            {
+                if (GameRefs.LevelMaker == null) return new Hash(null);
+                try { source = GetHash(); }
+                catch (Exception e)
+                {
+                    Loader.Warning($"PlayCount: map hash unavailable ({e.Message})");
+                    return new Hash(null);
+                }
+            }
+            if (source == null || source.Length == 0) return new Hash(null);
+            return new Hash(Md5.ComputeHash(source));
+        }
     }
 
     private static byte[] GetHash()
     {
         using MemoryStream ms = new();
         scrLevelMaker lm = GameRefs.LevelMaker;
-        if (lm.isOldLevel) ms.WriteUTF(lm.leveldata);
-        else ms.WriteObject(lm.floorAngles);
-        foreach (LevelEvent levelEvent in ADOBase.customLevel.events)
+        if (lm == null) return Array.Empty<byte>();
+        // 旧格式关卡只有 leveldata 字符串；customLevel.events 在旧关卡上可能为 null，
+        // 继续遍历会在开局 Show 的 map-hash 路径抛 NRE。
+        if (lm.isOldLevel)
         {
+            ms.WriteUTF(lm.leveldata);
+            return ms.ToArray();
+        }
+        ms.WriteObject(lm.floorAngles);
+        var events = ADOBase.customLevel?.events;
+        if (events == null) return ms.ToArray();
+        foreach (LevelEvent levelEvent in events)
+        {
+            if (levelEvent == null) continue;
             switch (levelEvent.eventType)
             {
                 case LevelEventType.SetSpeed:
@@ -252,6 +315,7 @@ public class PlayCount
         public static implicit operator byte[](Hash hash) => hash.data;
         public override string ToString()
         {
+            if (data == null) return string.Empty;
             char[] chars = new char[data.Length * 2];
             for (int i = 0; i < data.Length; i++)
             {

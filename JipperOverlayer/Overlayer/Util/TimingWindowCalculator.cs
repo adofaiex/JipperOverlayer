@@ -52,9 +52,19 @@ internal static class TimingWindowCalculator
 
 		// GetAdjustedAngleBoundaryInDeg 除参数外还读取 GCS.difficulty / currentSpeedTrial /
 		// HITMARGIN_COUNTED（isMobile 运行期不变），这些隐藏输入必须一并纳入缓存键
-		int difficulty = (int)GCS.difficulty;
-		float speedTrial = GCS.currentSpeedTrial;
-		float counted = GCS.HITMARGIN_COUNTED;
+		int difficulty;
+		float speedTrial, counted;
+		try
+		{
+			difficulty = (int)GCS.difficulty;
+			speedTrial = GCS.currentSpeedTrial;
+			counted = GCS.HITMARGIN_COUNTED;
+		}
+		catch (Exception e)
+		{
+			if (!_warned) { _warned = true; Loader.Warning($"TimingWindow: GCS cache inputs unavailable ({e.Message})"); }
+			return default;
+		}
 		bool xp = HitMarginCompat.XPerfectDisplayAvailable;
 
 		if (bpmTimesSpeed == _cacheBpm && conductorPitch == _cachePitch && marginScale == _cacheMargin &&

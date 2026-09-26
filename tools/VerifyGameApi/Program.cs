@@ -94,6 +94,12 @@ class Program
         CM("scrPlayerManager","playerColors"); CM("scrPlayerManager","playerCount"); CM("scrPlayerManager","instance"); CM("scrPlayerManager","allPlayers");
         CM("scrPlayer","planetarySystem"); CM("PlanetarySystem","speed"); CM("scrFloor","seqID"); CM("scrFloor","nextfloor"); CM("scrFloor","prevfloor"); CM("scrFloor","angleLength");
         CM("PlanetColor","ToRealColor");
+        // r149+ 原生计分/潜力路径依赖的成员；r148 没有这些成员，故按版本门控。
+        if (IsR150)
+        {
+            CM("scrMarginTracker","xScore"); CM("scrMarginTracker","maxXScore");
+            CM("scrLevelMaker","PlayerHitFloors"); CM("RDC","hitMarginColoursBySettings");
+        }
 
         Console.WriteLine("\n=== Harmony patch targets: postfix declares original params (name-bound) ===");
         MS("MonsterLove.StateMachine.StateBehaviour","ChangeState","newState");
@@ -162,8 +168,14 @@ class Program
     // of the caller's working directory.
     static string FindLibs(string[] args)
     {
-        if (args.Length > 0 && File.Exists(Path.Combine(args[0], "Assembly-CSharp.dll")))
-            return args[0];
+        // 显式传入的路径必须真的含有目标 DLL；否则直接报「参数无效」，
+        // 不能静默向上回退到仓库 Libs/，否则 CI 可能验证了错误的游戏版本。
+        if (args.Length > 0)
+        {
+            if (File.Exists(Path.Combine(args[0], "Assembly-CSharp.dll"))) return args[0];
+            Console.Error.WriteLine("The supplied Libs path does not contain Assembly-CSharp.dll: " + args[0]);
+            return null;
+        }
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d != null; d = d.Parent)
         {
             string candidate = Path.Combine(d.FullName, "Libs");

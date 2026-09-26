@@ -97,7 +97,10 @@ internal static class PatchManager
     {
         lock (_lock)
         {
-            if (_harmony == null) return;
+            // UnpatchAll 将 _isQuitting 置 true 后，设置界面仍可能在同一会话
+            // 收到一次 GUI.changed；此时若重新注册补丁，关闭的 mod 会复活。
+            // Initialize 会在下一次 Enable 时把它重置。
+            if (_isQuitting || _harmony == null) return;
             foreach (var registration in _registeredPatches.Values)
             {
                 if (registration.IsLazy) continue;
@@ -189,7 +192,7 @@ internal static class PatchManager
     {
         lock (_lock)
         {
-            if (_harmony == null) return;
+            if (_isQuitting || _harmony == null) return;
             foreach (var registration in _registeredPatches.Values)
             {
                 if (_appliedPatches.Contains(registration.PatchType)) continue;
@@ -364,6 +367,8 @@ internal static class PatchManager
         }
 
         Application.quitting -= OnApplicationQuitting;
+        SceneManager.sceneUnloaded -= OnSceneUnloaded;
+        SceneManager.sceneLoaded -= OnSceneLoaded;
         lock (_lock)
         {
             _harmony?.UnpatchAll(_harmonyId);
@@ -454,7 +459,14 @@ internal static class PatchManager
             var getMethod = prop.GetGetMethod(true);
             if (getMethod == null) throw new InvalidOperationException($"Property '{propertyName}' has no getter");
 
-            var del = (Func<T, F>)Delegate.CreateDelegate(typeof(Func<T, F>), getMethod);
+            var raw = (Func<T, F>)Delegate.CreateDelegate(typeof(Func<T, F>), getMethod);
+            // 属性委托在实例为 null 时会直接抛 NRE；GameRefs 的成员读取横跨
+            // 场景切换，先用一层 null-safe 包装，让调用方自然退回默认值。
+            var del = new Func<T, F>(instance =>
+            {
+                if (instance == null) return default;
+                try { return raw(instance); } catch { return default; }
+            });
             _delegateCache[key] = del;
             return del;
         }
@@ -609,7 +621,12 @@ internal static class PatchManager
                     Func<T, F> getter;
                     try
                     {
-                        getter = (Func<T, F>)Delegate.CreateDelegate(typeof(Func<T, F>), getMethod);
+                        var raw = (Func<T, F>)Delegate.CreateDelegate(typeof(Func<T, F>), getMethod);
+                        getter = new Func<T, F>(instance =>
+                        {
+                            if (instance == null) return default;
+                            try { return raw(instance); } catch { return default; }
+                        });
                     }
                     catch (ArgumentException)
                     {
@@ -619,7 +636,12 @@ internal static class PatchManager
                         il.Emit(OpCodes.Ldarg_0);
                         il.Emit(OpCodes.Callvirt, getMethod);
                         il.Emit(OpCodes.Ret);
-                        getter = (Func<T, F>)method.CreateDelegate(typeof(Func<T, F>));
+                        var raw = (Func<T, F>)method.CreateDelegate(typeof(Func<T, F>));
+                        getter = new Func<T, F>(instance =>
+                        {
+                            if (instance == null) return default;
+                            try { return raw(instance); } catch { return default; }
+                        });
                     }
                     _delegateCache[key] = getter;
                     return getter;

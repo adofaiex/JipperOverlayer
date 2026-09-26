@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Xml.Serialization;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -113,7 +114,9 @@ public class Settings
     public int GetFontIndexForSlot(FontSlot slot)
     {
         int idx = GetRawSlotFontIndex(slot);
-        return idx >= 0 ? idx : FontIndex;
+        if (idx < 0) idx = FontIndex;
+        // 字体列表会随版本/自定义字体增删而变化；手改配置也可能留下越界下标。
+        return FontManager.FontNames == null || idx >= FontManager.FontNames.Length ? 0 : idx;
     }
 
     public int GetFontSize(FontSlot slot) => slot switch
@@ -173,17 +176,29 @@ public class Settings
 
     [JsonIgnore] public ColorConfig Colors;
     [JsonIgnore] public LabelConfig Labels;
+    /// <summary>隐藏期间编辑过标签；下一次 Show 会主动重绘，避免沿用旧语言/旧缓存。</summary>
+    internal bool LabelsDirty { get; set; }
+    private static readonly string[] LanguageNames = ["English", "한국어", "中文"];
+    private static readonly FontSlot[] FontSlots = (FontSlot[])Enum.GetValues(typeof(FontSlot));
 
     public void OnGUI()
     {
         DrawGeneralSection();
+        bool needsVisibilityRefresh = GUI.changed;
         DrawDisplaySection();
+        needsVisibilityRefresh |= GUI.changed;
         DrawTextSettings();
+        needsVisibilityRefresh |= GUI.changed;
         DrawTextEffectsSection();
+        needsVisibilityRefresh |= GUI.changed;
         DrawLabelsSection();
-        // 每个 IMGUI 帧只在 Layout 阶段（或有实际修改时）刷新一次可见性，
-        // 而不是每个 GUI 事件都全量重排。
-        if (GUI.changed || Event.current.type == EventType.Layout)
+        needsVisibilityRefresh |= GUI.changed;
+        DrawDiagnosticsSection();
+        needsVisibilityRefresh |= GUI.changed;
+        // RefreshVisibility 会重排文本、字体、位置与原生 UI；只在设置真的改变时执行，
+        // 不再在每个 IMGUI Layout 事件中重复整轮工作。分节累计 GUI.changed 是必要的：
+        // DrawLabelsSection 会把它清零。
+        if (needsVisibilityRefresh)
             Overlay.Instance?.RefreshVisibility();
     }
 
@@ -193,14 +208,22 @@ public class Settings
             _generalFold = !_generalFold;
         if (!_generalFold) return;
 
-        Size = Slide(Tr.Get(Tr.Key.Size), Size, 0, 2, () => Overlayer.Overlay.Instance?.UpdateSize());
+        SlideField(ref Size, Tr.Get(Tr.Key.Size), 0, 2, () => Overlayer.Overlay.Instance?.UpdateSize());
 
         GUILayout.BeginHorizontal();
         GUILayout.Label(Tr.Get(Tr.Key.LangLabel), GUILayout.Width(100));
-        var langs = new[] { "English", "한국어", "中文" };
         int langIdx = (int)CurrentLanguage;
-        int newLang = GUILayout.SelectionGrid(langIdx, langs, 3);
-        if (newLang != langIdx) { CurrentLanguage = (Overlayer.Localization.Language)newLang; Overlayer.Overlay.Instance?.RefreshVisibility(); }
+        int newLang = GUILayout.SelectionGrid(langIdx, LanguageNames, 3);
+        if (newLang != langIdx)
+        {
+            CurrentLanguage = (Overlayer.Localization.Language)newLang;
+            var o = Overlayer.Overlay.Instance;
+            if (o != null)
+            {
+                if (o.GameObject.activeSelf) { o.RefreshAllTexts(); o.RefreshVisibility(); }
+                else LabelsDirty = true;
+            }
+        }
         GUILayout.EndHorizontal();
 
         GUILayout.Space(5);
@@ -209,6 +232,11 @@ public class Settings
             _fontFold = !_fontFold;
         if (_fontFold && FontManager.FontNames != null)
         {
+            if (GUILayout.Button(Tr.Get(Tr.Key.RescanFonts), GUILayout.Width(150)))
+            {
+                FontManager.ScanFonts();
+                Overlayer.Overlay.Instance?.ApplyFontToAll();
+            }
             GUILayout.Label("  -- Global --");
             for (int i = 0; i < FontManager.FontNames.Length; i++)
             {
@@ -224,7 +252,7 @@ public class Settings
             GUILayout.Space(5);
 
             // Per-region font overrides
-            foreach (FontSlot slot in Enum.GetValues(typeof(FontSlot)))
+            foreach (FontSlot slot in FontSlots)
                 DrawFontSlotSelector(slot);
         }
 
@@ -286,9 +314,9 @@ public class Settings
             {
                 Colors.Accuracy.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.AccuracyColor),
                     () => { Colors.Accuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
-                AccuracyDecimal = DecSlide("accDec", Tr.Key.DecimalPrecision, AccuracyDecimal, 4,
+                DecSlideField(ref AccuracyDecimal, "accDec", Tr.Key.DecimalPrecision, 4,
                     () => Overlayer.Overlay.Instance?.UpdateAccuracy());
-                AccuracyTextType = EnumSel(Tr.Key.PotentialDisplay, AccuracyTextType, TextTypeNames.Name, () =>
+                EnumSelField(ref AccuracyTextType, Tr.Key.PotentialDisplay, TextTypeNames.Name, () =>
                 {
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
@@ -301,9 +329,9 @@ public class Settings
             {
                 Colors.XAccuracy.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateAccuracy()), Tr.Get(Tr.Key.XaccuracyColor),
                     () => { Colors.XAccuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
-                XAccuracyDecimal = DecSlide("xaccDec", Tr.Key.DecimalPrecision, XAccuracyDecimal, 4,
+                DecSlideField(ref XAccuracyDecimal, "xaccDec", Tr.Key.DecimalPrecision, 4,
                     () => Overlayer.Overlay.Instance?.UpdateAccuracy());
-                XAccuracyTextType = EnumSel(Tr.Key.PotentialDisplay, XAccuracyTextType, TextTypeNames.Name, () =>
+                EnumSelField(ref XAccuracyTextType, Tr.Key.PotentialDisplay, TextTypeNames.Name, () =>
                 {
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
@@ -323,8 +351,8 @@ public class Settings
                     () => { Colors.XScore = new([(0.98f, Color.white), (1f, Color.white)], new Color(1, 0.8549f, 0)); Colors.Save(); });
                 HelpLabel(Tr.Get(Tr.Key.HelpXScore));
                 // 两个选择器各管一件事：分数格式管数字怎么写，潜力值显示管当前/潜力怎么排
-                XScoreTextType = EnumSel(Tr.Key.ScoreFormat, XScoreTextType, TextTypeNames.Name, () => Overlayer.Overlay.Instance?.UpdateAccuracy());
-                XScorePotentialType = EnumSel(Tr.Key.PotentialDisplay, XScorePotentialType, TextTypeNames.Name, () =>
+                EnumSelField(ref XScoreTextType, Tr.Key.ScoreFormat, TextTypeNames.Name, () => Overlayer.Overlay.Instance?.UpdateAccuracy());
+                EnumSelField(ref XScorePotentialType, Tr.Key.PotentialDisplay, TextTypeNames.Name, () =>
                 {
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.UpdateAccuracy(); }
@@ -364,7 +392,7 @@ public class Settings
             {
                 Colors.Best.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateProgress()), Tr.Get(Tr.Key.BestColor),
                     () => { Colors.Best = new([(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]); Colors.Save(); });
-                BestDecimal = DecSlide("bestDec", Tr.Key.DecimalPrecision, BestDecimal, 4,
+                DecSlideField(ref BestDecimal, "bestDec", Tr.Key.DecimalPrecision, 4,
                     () => Overlayer.Overlay.Instance?.OverlayTextManager?.UpdateBest(Overlayer.Overlay.Instance));
             }
 
@@ -386,7 +414,7 @@ public class Settings
             if (ShowCombo)
             {
                 EnableAutoCombo = Tog(Tr.Get(Tr.Key.EnableAutoCombo), EnableAutoCombo);
-                ComboColorMax = (int)Slide(Tr.Get(Tr.Key.ComboColorMax), ComboColorMax, 1, 5000, () => { });
+                IntSlideField(ref ComboColorMax, Tr.Get(Tr.Key.ComboColorMax), 1, 5000, null);
                 Colors.Combo.SettingGUI(ColorChanged(null), Tr.Get(Tr.Key.ComboColor),
                     () => { Colors.Combo = new([(0f, new Color(0.8745f, 0.7098f, 1f)), (1f, new Color(0.7176f, 0.3490f, 1f))]); Colors.Save(); });
                 bool prevReversed = ComboLineReversed;
@@ -401,7 +429,11 @@ public class Settings
             ShowBPM = Tog(Tr.Get(Tr.Key.ShowBpm), ShowBPM);
             if (ShowBPM)
             {
-                BpmColorMax = Slide(Tr.Get(Tr.Key.BpmColorMax), BpmColorMax, 100, 20000, () => { });
+                SlideField(ref BpmColorMax, Tr.Get(Tr.Key.BpmColorMax), 100, 20000, () =>
+                {
+                    var o = Overlayer.Overlay.Instance;
+                    if (o != null) { o.DirtyBpmCache(); o.UpdateBPM(); }
+                });
                 Colors.Bpm.SettingGUI(ColorChanged(() => Overlayer.Overlay.Instance?.UpdateBPM()), Tr.Get(Tr.Key.BpmColor),
                     () => { Colors.Bpm = new([(0f, Color.white), (1f, Color.magenta)]); Colors.Save(); });
                 DrawBpmLineOrder();
@@ -437,7 +469,7 @@ public class Settings
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(36);
-                FPSRefreshRate = Slide(Tr.Get(Tr.Key.FPSRefreshRate), FPSRefreshRate, 0.05f, 1f, () => { });
+                SlideField(ref FPSRefreshRate, Tr.Get(Tr.Key.FPSRefreshRate), 0.05f, 1f, null);
                 GUILayout.EndHorizontal();
                 DrawJColorFoldout("jFps", Tr.Get(Tr.Key.FpsColor), Colors.JFps,
                     () => { Colors.JFps = new(Color.white); Colors.Save(); });
@@ -476,9 +508,9 @@ public class Settings
             {
                 Colors.JTiming.SettingGUI(ColorChanged(() => Overlay.Instance?.UpdateTime()), Tr.Get(Tr.Key.TimingColor),
                     () => { Colors.JTiming = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
-                TimingDecimal = DecSlide("timingDec", Tr.Key.DecimalPrecision, TimingDecimal, 5,
+                DecSlideField(ref TimingDecimal, "timingDec", Tr.Key.DecimalPrecision, 5,
                     () => Overlay.Instance?.ExtendedOverlay?.RefreshTiming());
-                TimingTextType = EnumSel(Tr.Key.TimingDisplay, TimingTextType, TextTypeNames.Name, () =>
+                EnumSelField(ref TimingTextType, Tr.Key.TimingDisplay, TextTypeNames.Name, () =>
                 {
                     var o = Overlay.Instance;
                     if (o != null) { o.SetupLocationMain(); o.ExtendedOverlay?.RefreshTiming(); }
@@ -511,7 +543,13 @@ public class Settings
             HideDebugText = Tog(Tr.Get(Tr.Key.HideDebugText), HideDebugText);
             if (prevHide != HideDebugText) PatchManager.RefreshPatches();
             RemoveNotRequireInAuto = Tog(Tr.Get(Tr.Key.RemoveAutoReq), RemoveNotRequireInAuto);
+            bool prevPseudo = CheckPseudo;
             CheckPseudo = Tog(Tr.Get(Tr.Key.CheckPseudo), CheckPseudo);
+            if (prevPseudo != CheckPseudo)
+            {
+                var bpmOverlay = Overlay.Instance;
+                if (bpmOverlay != null) { bpmOverlay.DirtyBpmCache(); bpmOverlay.UpdateBPM(); }
+            }
             bool prevEL = AllowELCombo;
             AllowELCombo = Tog(Tr.Get(Tr.Key.AllowELCombo), AllowELCombo);
             if (prevEL != AllowELCombo) { PatchManager.RefreshPatches(); if (!AllowELCombo) AllowOrangeCombo = false; }
@@ -533,23 +571,16 @@ public class Settings
         bool prevRepos = RepositionAutoText;
         RepositionAutoText = Tog(Tr.Get(Tr.Key.RepositionAutoText), RepositionAutoText);
         if (prevRepos != RepositionAutoText) PatchManager.RefreshPatches();
+
+        // 所有显示类开关都在本节内。显示开关与 Harmony 补丁是动态门控关系：
+        // 只改字段而不重新注册，开关打开后下一格/下一击的回调仍然缺席。
+        // 在字段已写回后统一同步一次；GUI.changed 只在用户操作时为真，成本可忽略。
+        if (GUI.changed) PatchManager.RefreshPatches();
     }
 
-    /// <summary>带重排的开关：变化时刷新补丁与栈布局。
-    /// 这些开关门控着 Harmony 补丁（Timing 取数、State 联动、调试文本等），
-    /// 注册时的开关状态决定补丁是否挂载，切换后必须 RefreshPatches 才会生效。</summary>
-    bool TogR(Tr.Key key, bool value)
-    {
-        bool old = value;
-        bool nv = Tog(Tr.Get(key), value);
-        if (nv != old)
-        {
-            PatchManager.RefreshPatches();
-            var o = Overlay.Instance;
-            if (o != null) { o.SetupLocationMain(); o.RefreshVisibility(); }
-        }
-        return nv;
-    }
+    /// <summary>带重排的开关：先返回新值，字段由调用方写回；补丁/布局刷新在
+    /// DrawDisplaySection 末尾统一执行，避免回调读到旧开关状态。</summary>
+    bool TogR(Tr.Key key, bool value) => Tog(Tr.Get(key), value);
 
     void DrawDisplaySub(string key, string label, Action content)
     {
@@ -634,20 +665,22 @@ public class Settings
 
     static int[] GetDefaultExtendedOverlayOrder() => [10, 11, 0, 1, 2, 3, 4, 5, 6, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
-    /// <summary>把默认顺序里存在、但用户数组里缺失的元素追加到末尾。
-    /// 旧版配置保存的顺序数组不含后加的元素（如 XScore / 潜力值），
-    /// 不补齐 SetupLocation 的 foreach 就永远遍历不到它们——表现为开关打开却始终不显示。</summary>
-    static int[] AppendMissingExtendedOverlayElements(int[] order)
+    /// <summary>把显示顺序规整为「合法、去重、保留用户相对顺序、缺失项追加到末尾」。
+    /// 旧版配置可能没有新元素，重复/负值则会重复布局或越界访问可见性数组。</summary>
+    static int[] NormalizeOrder(int[] order, int[] defaults, Func<int, bool> isValid)
     {
-        var defaults = GetDefaultExtendedOverlayOrder();
-        var have = new HashSet<int>(order);
-        var missing = defaults.Where(x => !have.Contains(x)).ToArray();
-        if (missing.Length == 0) return order;
-        var result = new int[order.Length + missing.Length];
-        order.CopyTo(result, 0);
-        missing.CopyTo(result, order.Length);
-        return result;
+        var result = new List<int>();
+        var seen = new HashSet<int>();
+        if (order != null)
+            foreach (int id in order)
+                if (isValid(id) && seen.Add(id)) result.Add(id);
+        foreach (int id in defaults)
+            if (seen.Add(id)) result.Add(id);
+        return result.ToArray();
     }
+
+    static bool OrderDiffers(int[] before, int[] after)
+        => before == null || after == null || !before.SequenceEqual(after);
 
     static string GetElementName(DisplayElement elem) => elem switch
     {
@@ -690,8 +723,8 @@ public class Settings
         GUILayout.EndHorizontal();
         DrawReorderList(BpmLineOrder, id => id switch { 0 => Tr.Get(Tr.Key.BpmLineTile), 1 => Tr.Get(Tr.Key.BpmLineCur), _ => Tr.Get(Tr.Key.BpmLineKps) }, [0, 1, 2],
             arr => { BpmLineOrder = arr; Save(); var o = Overlay.Instance; o?.DirtyBpmCache(); o?.UpdateBPM(); },
-            id => id < BpmLineVisibility.Length && BpmLineVisibility[id],
-            (id, v) => { if (id < BpmLineVisibility.Length) { BpmLineVisibility[id] = v; Save(); var o = Overlay.Instance; o?.DirtyBpmCache(); o?.UpdateBPM(); } });
+            id => id >= 0 && id < BpmLineVisibility.Length && BpmLineVisibility[id],
+            (id, v) => { if (id >= 0 && id < BpmLineVisibility.Length) { BpmLineVisibility[id] = v; Save(); var o = Overlay.Instance; o?.DirtyBpmCache(); o?.UpdateBPM(); } });
     }
 
     void DrawAttemptLineOrder()
@@ -897,8 +930,9 @@ public class Settings
     }
 
     /// <summary>枚举选择器：点击循环切换到下一个值。按钮显示本地化含义
-    /// （见 TextTypeNames），不再直接显示英文原始枚举名。</summary>
-    static T EnumSel<T>(Tr.Key key, T value, Func<T, string> nameOf, Action onChange = null) where T : struct, Enum
+    /// （见 TextTypeNames），不再直接显示英文原始枚举名。字段赋值由 EnumSelField 完成，
+    /// 避免 onChange 在旧字段值上执行。</summary>
+    static T EnumSel<T>(Tr.Key key, T value, Func<T, string> nameOf) where T : struct, Enum
     {
         GUILayout.BeginHorizontal();
         GUILayout.Label(Tr.Get(key), GUILayout.Width(140));
@@ -907,10 +941,17 @@ public class Settings
             var vals = (T[])Enum.GetValues(typeof(T));
             int i = Array.IndexOf(vals, value);
             value = vals[(i + 1) % vals.Length];
-            onChange?.Invoke();
         }
         GUILayout.EndHorizontal();
         return value;
+    }
+
+    static void EnumSelField<T>(ref T field, Tr.Key key, Func<T, string> nameOf, Action onChange) where T : struct, Enum
+    {
+        T next = EnumSel(key, field, nameOf);
+        if (EqualityComparer<T>.Default.Equals(next, field)) return;
+        field = next;
+        onChange?.Invoke();
     }
 
     static GUIStyle _helpStyle;
@@ -926,7 +967,7 @@ public class Settings
     }
 
     /// <summary>0..max 的整数小数位滑条（带可编辑文本框）。</summary>
-    int DecSlide(string fieldKey, Tr.Key labelKey, int value, int max, Action onChange)
+    int DecSlide(string fieldKey, Tr.Key labelKey, int value, int max)
     {
         GUILayout.BeginHorizontal();
         GUILayout.Label(Tr.Get(labelKey), GUILayout.Width(140));
@@ -943,11 +984,20 @@ public class Settings
         else if (value.ToString() != text)
             _slideFields[fieldKey] = value.ToString();
         GUILayout.EndHorizontal();
-        if (nv != value) onChange?.Invoke();
         return nv;
     }
 
-    static float Slide(string label, float v, float min, float max, Action onChange)
+    void DecSlideField(ref int field, string fieldKey, Tr.Key labelKey, int max, Action onChange)
+    {
+        int next = DecSlide(fieldKey, labelKey, field, max);
+        if (next == field) return;
+        field = next;
+        onChange?.Invoke();
+    }
+
+    static bool IsFinite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+
+    static float Slide(string label, float v, float min, float max)
     {
         GUILayout.BeginHorizontal();
         GUILayout.Label(label, GUILayout.Width(120));
@@ -960,7 +1010,7 @@ public class Settings
             // 保留用户输入的原始文本（含清空、负号等中间态），能解析才应用——
             // 与 PosSlide2 相同的模式，避免输入被立即回弹。
             _slideFields[label] = newText;
-            if (float.TryParse(newText, out float parsed))
+            if (float.TryParse(newText, out float parsed) && IsFinite(parsed))
             {
                 float clamped = Mathf.Clamp(parsed, min, max);
                 if (Math.Abs(clamped - v) > 0.001f)
@@ -973,8 +1023,24 @@ public class Settings
         else if (Math.Abs(nv - v) > 0.001f)
             _slideFields[label] = nv.ToString("F2");
         GUILayout.EndHorizontal();
-        if (Math.Abs(nv - v) > 0.001f) { onChange?.Invoke(); return nv; }
-        return v;
+        return Math.Abs(nv - v) > 0.001f ? nv : v;
+    }
+
+    static void SlideField(ref float field, string label, float min, float max, Action onChange)
+    {
+        float next = Slide(label, field, min, max);
+        if (Math.Abs(next - field) <= 0.001f) return;
+        field = next;
+        onChange?.Invoke();
+    }
+
+    static void IntSlideField(ref int field, string label, float min, float max, Action onChange)
+    {
+        float next = Slide(label, field, min, max);
+        int rounded = (int)Math.Round(next);
+        if (rounded == field) return;
+        field = rounded;
+        onChange?.Invoke();
     }
 
     void PosSlide2(string label, ref float vx, ref float vy)
@@ -987,7 +1053,7 @@ public class Settings
         if (!_slideFields.TryGetValue(label + "X", out var tx))
             _slideFields[label + "X"] = tx = $"{(int)vx}";
         string ntx = GUILayout.TextField(tx, GUILayout.Width(42));
-        if (ntx != tx) { _slideFields[label + "X"] = ntx; if (float.TryParse(ntx, out float p)) nx = Mathf.Clamp(p, min, max); }
+        if (ntx != tx) { _slideFields[label + "X"] = ntx; if (float.TryParse(ntx, out float p) && IsFinite(p)) nx = Mathf.Clamp(p, min, max); }
         else if (ntx == tx && Math.Abs(nx - vx) > 0.001f) _slideFields[label + "X"] = $"{(int)nx}";
         GUILayout.Space(4);
         GUILayout.Label("Y", GUILayout.Width(14));
@@ -995,7 +1061,7 @@ public class Settings
         if (!_slideFields.TryGetValue(label + "Y", out var ty))
             _slideFields[label + "Y"] = ty = $"{(int)vy}";
         string nty = GUILayout.TextField(ty, GUILayout.Width(42));
-        if (nty != ty) { _slideFields[label + "Y"] = nty; if (float.TryParse(nty, out float p)) ny = Mathf.Clamp(p, min, max); }
+        if (nty != ty) { _slideFields[label + "Y"] = nty; if (float.TryParse(nty, out float p) && IsFinite(p)) ny = Mathf.Clamp(p, min, max); }
         else if (nty == ty && Math.Abs(ny - vy) > 0.001f) _slideFields[label + "Y"] = $"{(int)ny}";
         GUILayout.EndHorizontal();
         if (Math.Abs(nx - vx) > 0.001f || Math.Abs(ny - vy) > 0.001f) { vx = nx; vy = ny; Overlayer.Overlay.Instance?.ApplyPositionOffsets(); }
@@ -1011,6 +1077,8 @@ public class Settings
     private static string _expandedAlign, _expandedDisplaySub, _expandedPos;
     private static string _expandedOrder, _expandedFontSlot;
     private static bool _labelsFold;
+    private static bool _diagnosticsFold;
+    private static float _diagnosticsCopiedUntil;
 
     void DrawFontSlotSelector(FontSlot slot)
     {
@@ -1021,7 +1089,9 @@ public class Settings
         int rawIdx = GetRawSlotFontIndex(slot);
         bool useGlobal = rawIdx < 0;
         int resolvedIdx = GetFontIndexForSlot(slot);
-        string fontName = useGlobal
+        bool hasFonts = FontManager.FontNames != null && FontManager.FontNames.Length > 0
+                        && resolvedIdx >= 0 && resolvedIdx < FontManager.FontNames.Length;
+        string fontName = !hasFonts ? "<no font>" : useGlobal
             ? $"{FontManager.FontNames[resolvedIdx]} ({Tr.Get(Tr.Key.AlignMain)})"
             : FontManager.FontNames[resolvedIdx];
 
@@ -1071,14 +1141,14 @@ public class Settings
         string newSizeText = GUILayout.TextField(sizeText, GUILayout.Width(42));
         if (newSizeText != sizeText)
         {
-            if (float.TryParse(newSizeText, out float parsed))
+            if (float.TryParse(newSizeText, out float parsed) && IsFinite(parsed))
             {
                 nv = Mathf.Clamp(parsed, 8, 200);
                 _slideFields[sizeKey] = Math.Abs(nv - parsed) > 0.0001f
                     ? ((int)Math.Round(nv)).ToString() : newSizeText;
             }
             else if (newSizeText.StartsWith(sizeText) && newSizeText.Length > sizeText.Length
-                && float.TryParse(newSizeText.Substring(sizeText.Length), out parsed))
+                && float.TryParse(newSizeText.Substring(sizeText.Length), out parsed) && IsFinite(parsed))
             {
                 nv = Mathf.Clamp(parsed, 8, 200);
                 _slideFields[sizeKey] = Math.Abs(nv - parsed) > 0.0001f
@@ -1106,6 +1176,45 @@ public class Settings
         }
 
         GUILayout.EndVertical();
+        GUILayout.EndHorizontal();
+    }
+
+    void DrawDiagnosticsSection()
+    {
+        if (GUILayout.Button($"{( _diagnosticsFold ? "▼" : "▷")} {Tr.Get(Tr.Key.Diagnostics)}", GUI.skin.label, GUILayout.ExpandWidth(true)))
+            _diagnosticsFold = !_diagnosticsFold;
+        if (!_diagnosticsFold) return;
+
+        string loaderName = Loader.Instance?.GetType().Name ?? "none";
+        string api = VersionSafe.IsInitialized
+            ? (VersionSafe.IsV141OrLater ? "v141+" : "v136")
+            : "not initialized";
+        string xperfect = HitMarginCompat.HasNativeXPerfect ? "native"
+            : XPerfectIntegration.IsAvailable ? "external XPerfect" : "unavailable";
+        string font = AssetLoader.FontAsset != null ? AssetLoader.FontAsset.name : "fallback/missing";
+        int fontCount = FontManager.FontNames?.Length ?? 0;
+        var o = Overlay.Instance;
+        string overlay = o == null ? "not created"
+            : o.GameObject != null && o.GameObject.activeSelf
+                ? $"active, seq={GameRefs.CurrentSeqID}, checkpoints={GameRefs.CheckpointsUsed}"
+                : "hidden";
+        string report =
+            $"Loader: {loaderName}\n" +
+            $"API: {api} | {HitMarginCompat.VersionReport}\n" +
+            $"XPerfect: {xperfect}\n" +
+            $"Font: {font} ({fontCount} loaded)\n" +
+            $"Overlay: {overlay}\n" +
+            $"ModPath: {Loader.ModPath}";
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        GUILayout.Label(report, GUILayout.Height(110), GUILayout.ExpandWidth(true));
+        if (GUILayout.Button(_diagnosticsCopiedUntil > Time.realtimeSinceStartup
+                ? Tr.Get(Tr.Key.DiagnosticsCopied) : Tr.Get(Tr.Key.CopyDiagnostics),
+                GUILayout.Width(150), GUILayout.Height(24)))
+        {
+            GUIUtility.systemCopyBuffer = report;
+            _diagnosticsCopiedUntil = Time.realtimeSinceStartup + 1.5f;
+        }
         GUILayout.EndHorizontal();
     }
 
@@ -1171,9 +1280,13 @@ public class Settings
 
         if (GUI.changed)
         {
+            LabelsDirty = true;
             var o = Overlay.Instance;
             if (o != null && o.GameObject.activeSelf)
+            {
                 o.RefreshAllTexts();
+                LabelsDirty = false;
+            }
         }
     }
 
@@ -1246,11 +1359,75 @@ public class Settings
         if (newIdx != idx) { align = AlignValues[newIdx]; Overlayer.Overlay.Instance?.ApplyAlignment(); }
     }
 
+    static float ClampFinite(float value, float fallback, float min, float max)
+        => float.IsNaN(value) || float.IsInfinity(value) ? fallback : Mathf.Clamp(value, min, max);
+
+    static bool NormalizeLoadedValues(Settings s)
+    {
+        bool changed = false;
+        void Check(ref float field, float fallback, float min, float max)
+        {
+            float next = ClampFinite(field, fallback, min, max);
+            if (Math.Abs(next - field) > 0.0001f) { field = next; changed = true; }
+        }
+        void CheckInt(ref int field, int fallback, int min, int max)
+        {
+            int next = Math.Min(max, Math.Max(min, field == int.MinValue ? fallback : field));
+            if (next != field) { field = next; changed = true; }
+        }
+        void CheckAlign(ref int field)
+        {
+            if (Array.IndexOf(AlignValues, field) < 0) { field = 514; changed = true; }
+        }
+
+        Check(ref s.Size, 1f, 0f, 3f);
+        Check(ref s.BpmColorMax, 8000f, 1f, 100000f);
+        CheckInt(ref s.ComboColorMax, 1000, 1, 5000);
+        Check(ref s.FPSRefreshRate, 0.2f, 0.05f, 1f);
+        CheckInt(ref s.ExtendedDecimalPrecision, 2, 0, 5);
+        CheckInt(ref s.ProgressDecimal, 2, 0, 4);
+        CheckInt(ref s.AccuracyDecimal, 2, 0, 4);
+        CheckInt(ref s.XAccuracyDecimal, 2, 0, 4);
+        CheckInt(ref s.BestDecimal, 2, 0, 4);
+        CheckInt(ref s.TimingDecimal, 5, 0, 5);
+        CheckInt(ref s.MainFontSize, 25, 8, 200);
+        CheckInt(ref s.BPMFontSize, 25, 8, 200);
+        CheckInt(ref s.JudgeFontSize, 25, 8, 200);
+        CheckInt(ref s.ComboTitleFontSize, 40, 8, 200);
+        CheckInt(ref s.ComboValFontSize, 108, 8, 200);
+        CheckInt(ref s.TimingFontSize, 20, 8, 200);
+        CheckInt(ref s.AttemptFontSize, 25, 8, 200);
+        void CheckFinite(ref float field)
+        {
+            if (float.IsNaN(field) || float.IsInfinity(field)) { field = 0; changed = true; }
+        }
+        CheckFinite(ref s.MainOffsetX); CheckFinite(ref s.MainOffsetY);
+        CheckFinite(ref s.BPMOffsetX); CheckFinite(ref s.BPMOffsetY);
+        CheckFinite(ref s.JudgeOffsetX); CheckFinite(ref s.JudgeOffsetY);
+        CheckFinite(ref s.P1JudgeOffsetX); CheckFinite(ref s.P1JudgeOffsetY);
+        CheckFinite(ref s.P2JudgeOffsetX); CheckFinite(ref s.P2JudgeOffsetY);
+        CheckFinite(ref s.P3JudgeOffsetX); CheckFinite(ref s.P3JudgeOffsetY);
+        CheckFinite(ref s.P4JudgeOffsetX); CheckFinite(ref s.P4JudgeOffsetY);
+        CheckFinite(ref s.ComboOffsetX); CheckFinite(ref s.ComboOffsetY);
+        CheckFinite(ref s.TimingOffsetX); CheckFinite(ref s.TimingOffsetY);
+        CheckFinite(ref s.AttemptOffsetX); CheckFinite(ref s.AttemptOffsetY);
+        CheckFinite(ref s.AttemptCoopOffsetX); CheckFinite(ref s.AttemptCoopOffsetY);
+        CheckFinite(ref s.ProgBarOffsetX); CheckFinite(ref s.ProgBarOffsetY);
+        CheckAlign(ref s.MainAlign); CheckAlign(ref s.BPMAlign); CheckAlign(ref s.JudgeAlign);
+        CheckAlign(ref s.ComboAlign); CheckAlign(ref s.ComboValAlign); CheckAlign(ref s.TimingAlign); CheckAlign(ref s.AttemptAlign);
+        if (s.TextEffects == null) { s.TextEffects = new TextEffectConfig(); changed = true; }
+        if (s.TextEffects.ShadowColor == null) { s.TextEffects.ShadowColor = new ColorCache(new Color(0, 0, 0, 0.5f)); changed = true; }
+        if (s.TextEffects.OutlineColor == null) { s.TextEffects.OutlineColor = new ColorCache(Color.black); changed = true; }
+        return changed;
+    }
+
     public void OnSaveGUI() { Save(); Colors?.Save(); Labels?.Save(); }
     public void Save() { SaveJson(); }
     public static Settings Load()
     {
-        bool freshConfig = !File.Exists(SettingsPath()) && !File.Exists(OldXmlPath());
+        bool freshConfig = !File.Exists(SettingsPath())
+            && !File.Exists(SettingsPath() + ".bak")
+            && !File.Exists(OldXmlPath());
         var s = LoadJson() ?? LoadXmlFallback() ?? new Settings();
         // 全新安装：首启观感对齐旧的普通模式默认（扩展文本与宽松连击全关），
         // 与旧配置迁移规则保持一致；想默认全开改这里的强制项即可
@@ -1286,21 +1463,21 @@ public class Settings
         }
         s.Colors = ColorConfig.Load();
         s.Labels = LabelConfig.Load();
-        // 唯一的显示顺序：原 GeneralDisplayOrder 并入（未启用扩展文本时，多余元素自然不显示）
-        if (s.ExtendedDisplayOrder == null || s.ExtendedDisplayOrder.Length == 0)
-            s.ExtendedDisplayOrder = GetDefaultExtendedOverlayOrder();
-        else
-            // 先剔除越界值，再补齐旧配置里缺失的元素：新增显示元素（如 XScore / 潜力值）
-            // 若不在顺序数组里，SetupLocation 的 foreach 根本不会遍历到它们，
-            // 表现为「开关打开了但文本永远不显示」。补齐追加在末尾，不打乱用户已排的顺序。
-            s.ExtendedDisplayOrder = AppendMissingExtendedOverlayElements(
-                s.ExtendedDisplayOrder.Where(x => IsValidExtendedOverlayElement(x)).ToArray());
-        if (s.BpmLineOrder == null || s.BpmLineOrder.Length == 0)
-            s.BpmLineOrder = [0, 1, 2];
+        // 唯一的显示顺序：原 GeneralDisplayOrder 并入（未启用扩展文本时，多余元素自然不显示）。
+        // 统一剔除越界/重复项并补齐新增元素；否则重复 id 会重复占栈，负 id 会让 UI 越界。
+        var oldExtendedOrder = s.ExtendedDisplayOrder;
+        var oldBpmOrder = s.BpmLineOrder;
+        var oldAttemptOrder = s.AttemptLineOrder;
+        s.ExtendedDisplayOrder = NormalizeOrder(s.ExtendedDisplayOrder,
+            GetDefaultExtendedOverlayOrder(), IsValidExtendedOverlayElement);
+        s.BpmLineOrder = NormalizeOrder(s.BpmLineOrder, [0, 1, 2], id => id >= 0 && id <= 2);
         if (s.BpmLineVisibility == null || s.BpmLineVisibility.Length != 3)
             s.BpmLineVisibility = [true, true, true];
-        if (s.AttemptLineOrder == null || s.AttemptLineOrder.Length == 0)
-            s.AttemptLineOrder = [0, 1];
+        s.AttemptLineOrder = NormalizeOrder(s.AttemptLineOrder, [0, 1], id => id >= 0 && id <= 1);
+        bool orderChanged = OrderDiffers(oldExtendedOrder, s.ExtendedDisplayOrder)
+                         || OrderDiffers(oldBpmOrder, s.BpmLineOrder)
+                         || OrderDiffers(oldAttemptOrder, s.AttemptLineOrder);
+        if (NormalizeLoadedValues(s) || orderChanged) s.Save();
         return s;
     }
 
@@ -1317,7 +1494,7 @@ public class Settings
         try
         {
             var json = JsonConvert.SerializeObject(this, Formatting.Indented);
-            File.WriteAllText(SettingsPath(), json);
+            Loader.WriteAllTextAtomic(SettingsPath(), json);
         }
         catch (Exception e)
         {
@@ -1327,20 +1504,28 @@ public class Settings
 
     private static Settings LoadJson()
     {
-        try
+        string path = SettingsPath();
+        if (File.Exists(path))
         {
-            var path = SettingsPath();
-            if (!File.Exists(path)) return null;
-            var json = File.ReadAllText(path);
-            var s = JsonConvert.DeserializeObject<Settings>(json);
-            ApplyLegacyExtendedOverlayMigration(s, json);
-            return s;
+            try { return ReadJsonFile(path); }
+            catch (Exception e) { Loader.Warning($"Failed to load Settings.json: {e.Message}"); }
         }
-        catch (Exception e)
+        string backup = path + ".bak";
+        if (File.Exists(backup))
         {
-            Loader.Warning($"Failed to load Settings.json: {e.Message}");
-            return null;
+            try { return ReadJsonFile(backup); }
+            catch (Exception e) { Loader.Warning($"Failed to load Settings.json backup: {e.Message}"); }
         }
+        return null;
+    }
+
+    private static Settings ReadJsonFile(string path)
+    {
+        var json = File.ReadAllText(path);
+        var s = JsonConvert.DeserializeObject<Settings>(json);
+        ApplyLegacyExtendedOverlayMigration(s, json);
+        MigrateLegacyDisplayOrder(s, json);
+        return s;
     }
 
     /// <summary>
@@ -1368,16 +1553,62 @@ public class Settings
         ApplyLegacyMigrationCore(s, hasKey, legacyMode);
     }
 
+    /// <summary>迁移旧版 JALib 的显示顺序键：仅当新字段尚未存在时读取一次，
+    /// 避免用户后来在 GUI 排好的顺序被残留旧键每次启动覆盖。</summary>
+    static void MigrateLegacyDisplayOrder(Settings s, string json)
+    {
+        try
+        {
+            if (s == null) return;
+            var jo = JsonConvert.DeserializeObject<JObject>(json);
+            var current = jo?["ExtendedDisplayOrder"];
+            if (current != null && current.Type != JTokenType.Null) return;
+            var legacy = jo?["JongyeolDisplayOrder"]?.ToObject<int[]>();
+            if (legacy == null || legacy.Length == 0) return;
+            s.ExtendedDisplayOrder = legacy;
+        }
+        catch
+        {
+            // 旧键格式异常不应阻断其它设置的加载。
+        }
+    }
+
     /// <summary>XML 老配置的同一迁移：以 &lt;ExtendedOverlayMode&gt; 元素是否存在为准。</summary>
     static void ApplyLegacyExtendedOverlayMigrationXml(Settings s, string xmlText)
     {
         if (s == null) return;
         int i = xmlText.IndexOf("<ExtendedOverlayMode>", StringComparison.Ordinal);
-        if (i < 0) { ApplyLegacyMigrationCore(s, false, false); return; }
+        if (i < 0) { ApplyLegacyMigrationCore(s, false, false); MigrateLegacyDisplayOrderXml(s, xmlText); return; }
         int start = i + "<ExtendedOverlayMode>".Length;
         int end = xmlText.IndexOf("</ExtendedOverlayMode>", start, StringComparison.Ordinal);
         bool legacy = end > start && xmlText.Substring(start, end - start).Trim() == "true";
         ApplyLegacyMigrationCore(s, true, legacy);
+        MigrateLegacyDisplayOrderXml(s, xmlText);
+    }
+
+    static void MigrateLegacyDisplayOrderXml(Settings s, string xmlText)
+    {
+        try
+        {
+            int i = xmlText.IndexOf("<JongyeolDisplayOrder>", StringComparison.Ordinal);
+            if (i < 0) return;
+            if (xmlText.IndexOf("<ExtendedDisplayOrder>", StringComparison.Ordinal) >= 0) return;
+            int start = i + "<JongyeolDisplayOrder>".Length;
+            int end = xmlText.IndexOf("</JongyeolDisplayOrder>", start, StringComparison.Ordinal);
+            if (end <= start) return;
+            // XmlSerializer 通常写成 <int>10</int>，但历史手改文件也可能是逗号分隔文本；
+            // 提取所有整数 token 兼容两种形态，负值随后由 Normalize 过滤。
+            var legacy = Regex.Matches(xmlText.Substring(start, end - start), @"-?\d+")
+                .Cast<Match>()
+                .Select(m => int.TryParse(m.Value, out int value) ? value : int.MinValue)
+                .Where(value => value != int.MinValue)
+                .ToArray();
+            if (legacy.Length > 0) s.ExtendedDisplayOrder = legacy;
+        }
+        catch
+        {
+            // 旧 XML 顺序键损坏时回退默认顺序。
+        }
     }
 
     static void ApplyLegacyMigrationCore(Settings s, bool hasKey, bool legacyMode)
@@ -1412,7 +1643,7 @@ public class Settings
             // 迁移必须在序列化之前完成（旧写法先序列化再迁移，迁移结果落不了盘）
             ApplyLegacyExtendedOverlayMigrationXml(s, xmlText);
             var json = JsonConvert.SerializeObject(s, Formatting.Indented);
-            File.WriteAllText(SettingsPath(), json);
+            Loader.WriteAllTextAtomic(SettingsPath(), json);
             File.Delete(path);
             Loader.Log("Settings: migrated from XML to JSON");
             return s;

@@ -26,8 +26,13 @@ public class ExtendedOverlayModule
     private float _lastCurKps = -1, _fpsTime, _timingsSum;
     private bool _perToCom;
     private int _lastMusicTimeTick = -1;
+    private int _lastMapTimeTick = -1;
+    private float _lastMapTotalTime = -1f;
     private float _lastTiming;
     public int DecimalPrecision = 2;
+
+    private static System.Reflection.PropertyInfo _authorProperty;
+    private static object _authorSource;
 
     /// <summary>扩展叠加层下连击标题是否已切换为备用文本（非完美命中后）。</summary>
     public bool IsAltComboTitle => _perToCom;
@@ -65,7 +70,7 @@ public class ExtendedOverlayModule
         var s = Main.Settings;
         bool checkAuto = !s.RemoveNotRequireInAuto || !GameRefs.IsAuto;
 
-        _overlay.Checkpoints ??= Overlay.CollectCheckpoints();
+        _overlay.ResolveCheckpoints();
 
         foreach (int elemId in s.ExtendedDisplayOrder)
         {
@@ -77,6 +82,7 @@ public class ExtendedOverlayModule
         }
 
         _overlay.UpdateProgress();
+        UpdateColors();
         VersionSafe.CalculatePercentAcc();
         _overlay.UpdateTime();
         UpdateAuthor();
@@ -136,7 +142,8 @@ public class ExtendedOverlayModule
             DisplayElement.MapTime => s.ShowMapTime,
             DisplayElement.Best => checkAuto && s.ShowBest,
             DisplayElement.State => s.ShowState,
-            DisplayElement.Timing => checkAuto && s.ShowTiming,
+            // AvgTiming 模式只写 AvgTimingText；若同时显示 Timing 文本会留下一个空白栈位。
+            DisplayElement.Timing => checkAuto && s.ShowTiming && s.TimingTextType != TimingTextType.AvgTiming,
             // AvgTiming 行仅在 Both 模式（两行分开）时有意义
             DisplayElement.AvgTiming => checkAuto && s.ShowTiming && s.TimingTextType == TimingTextType.Both,
             // XScore 与潜力值文本的可见性跟随所属功能与其文本类型
@@ -180,7 +187,13 @@ public class ExtendedOverlayModule
         var s = Main.Settings;
         if (!s.ShowAuthor || !_overlay.GameObject.activeSelf) return;
         var ld = scnGame.instance?.levelData;
-        string author = ld?.GetType().GetProperty("author")?.GetValue(ld) as string ?? "";
+        if (!ReferenceEquals(_authorSource, ld))
+        {
+            _authorSource = ld;
+            _authorProperty = ld?.GetType().GetProperty("author",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        }
+        string author = _authorProperty?.GetValue(ld) as string ?? "";
         AuthorText.text = $"<color=white>{s.Labels.Author} |</color> {author}";
     }
 
@@ -280,11 +293,21 @@ public class ExtendedOverlayModule
         RenderTiming(_lastTiming);
     }
 
-    internal void DirtyTextCaches()
+    internal void InvalidateTimeCaches()
     {
         _lastMusicTimeTick = -1;
+        _lastMapTimeTick = -1;
+        _lastMapTotalTime = -1f;
+    }
+
+    internal void DirtyTextCaches()
+    {
+        InvalidateTimeCaches();
         _pseudoFloor = -1;
     }
+
+    /// <summary>设置/显示顺序变化时使伪 BPM 的 seqID 早退失效，强制下一次重新探测。</summary>
+    internal void ResetBpmState() => _pseudoFloor = -1;
 
     // ===== Overridden Update Methods =====
 
@@ -309,7 +332,7 @@ public class ExtendedOverlayModule
             else
             {
                 float time = audioSrc.time;
-                if (time < 0) time = 0;
+                if (float.IsNaN(time) || float.IsInfinity(time) || time < 0) time = 0;
                 var clip = audioSrc.clip;
                 float totalTime = clip != null && clip.length > 0 ? clip.length : 0;
 
@@ -321,23 +344,27 @@ public class ExtendedOverlayModule
                         totalTime = (float)floors[floors.Count - 1].entryTime;
                 }
 
-                // Throttle: update at ~10fps to avoid per-frame song.time access
+                // Throttle: update at ~10fps to avoid per-frame song.time access.
+                // 这里不能用 return：地图时间可能与音乐时间不同步，且 ShowMapTime
+                // 还会在下面独立更新；提前返回会让它最多等到下一次音乐时间 tick。
                 int curTick = (int)(time * 10);
-                if (_lastMusicTimeTick == curTick) return;
-                _lastMusicTimeTick = curTick;
+                if (_lastMusicTimeTick != curTick)
+                {
+                    _lastMusicTimeTick = curTick;
 
-                bool hourNeed = totalTime >= 3600;
-                _overlay.MusicTimeCache ??= FmtTime(totalTime, hourNeed);
+                    bool hourNeed = totalTime >= 3600;
+                    _overlay.MusicTimeCache ??= FmtTime(totalTime, hourNeed);
 
-                if (time > 0) _overlay.SongPlaying = true;
-                else if (time == 0 && _overlay.SongPlaying) time = totalTime;
+                    if (time > 0) _overlay.SongPlaying = true;
+                    else if (time == 0 && _overlay.SongPlaying) time = totalTime;
 
-                string timeStr = time == 0 && _overlay.SongPlaying
-                    ? _overlay.MusicTimeCache
-                    : FmtTime(time, hourNeed);
+                    string timeStr = time == 0 && _overlay.SongPlaying
+                        ? _overlay.MusicTimeCache
+                        : FmtTime(time, hourNeed);
 
-                _overlay.TimeText.text = $"{_overlay._musicTimeLabel} {timeStr}~{_overlay.MusicTimeCache}";
-                _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
+                    _overlay.TimeText.text = $"{_overlay._musicTimeLabel} {timeStr}~{_overlay.MusicTimeCache}";
+                    _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
+                }
             }
         }
 
@@ -345,12 +372,19 @@ public class ExtendedOverlayModule
         if (s.ShowMapTime || requireMusicToMap)
         {
             float time = (float)(GameRefs.ConductorAddoffset + GameRefs.ConductorSongpositionMinusi);
+            if (float.IsNaN(time) || float.IsInfinity(time)) time = 0;
             var floors = GameRefs.LevelMaker?.listFloors;
             if (floors == null || floors.Count == 0) return;
             float totalTime = (float)floors[floors.Count - 1].entryTime;
             if (time < 0) time = 0;
             else if (time > totalTime) time = totalTime;
             if (!s.ShowMapTime && !requireMusicToMap) return;
+            // 地图时间同样限制到约 10Hz；否则 OverlayMono 每帧都会拼接字符串并
+            // 触发 TMP 重建。总时长变化时强制刷新，避免地图数据热切换后显示旧总时长。
+            int mapTick = (int)(time * 10);
+            if (mapTick == _lastMapTimeTick && Math.Abs(totalTime - _lastMapTotalTime) < 0.001f) return;
+            _lastMapTimeTick = mapTick;
+            _lastMapTotalTime = totalTime;
             bool hourNeed = totalTime >= 3600;
             _overlay.MapTimeCache ??= FmtTime(totalTime, hourNeed);
             string timeStr = time == totalTime ? _overlay.MapTimeCache : FmtTime(time, hourNeed);
@@ -378,7 +412,9 @@ public class ExtendedOverlayModule
         // 判定时间窗：并入 BPM 多行文本，与 Overlay.UpdateBPM 一致。
         var tw = s.ShowTimingWindow ? TimingWindowCalculator.Calculate(floor) : default;
         bool twValid = s.ShowTimingWindow && tw.Valid;
-        bool twChanged = twValid && _overlay.TimingWindowChanged(tw);
+        // 即使本次窗口无效（开关刚关/探测失败），也把可见性变化传给 Overlay，
+        // 否则 UpdateBPM 的早退会留下旧的判定时间窗行。
+        bool twChanged = _overlay.TimingWindowChanged(tw, twValid);
 
         if (_overlay.LastTileBpm == bpm.TileBpm && _overlay.LastCurBpm == cbpm && Math.Abs(_lastCurKps - kps) < 0.001f && !twChanged) return;
         string colorHex = s.Colors.GetBpmHex(bpm.TileBpm / s.BpmColorMax, true);
@@ -412,8 +448,17 @@ public class ExtendedOverlayModule
     public void OnShow(int floor)
     {
         _perToCom = false; _purePerfect = true; _pseudoFloor = -1;
+        // checkpoint 重试通常直接再次调用 scnGame.Play -> Overlay.Show，而不会经过
+        // OnHide。若只把 sum 清零而保留旧样本，SetupLocation 会把旧样本与新命中混算，
+        // 导致平均时机在重试后失真。这里按一次新 run 完整重置统计。
+        _timings = null;
         _timingsSum = 0;
+        _lastTiming = 0;
         _lastMusicTimeTick = -1;
+        _lastMapTimeTick = -1;
+        _lastMapTotalTime = -1f;
+        _authorSource = null;
+        _authorProperty = null;
         if (GameRefs.CheckpointsUsed == 0) _overlay.ComboTitle.text = Main.Settings.Labels.ComboTitle;
     }
 
@@ -443,7 +488,15 @@ public class ExtendedOverlayModule
                 {
                     float speed = floor.speed;
                     do { floor = floor.nextfloor; }
-                    while (floor != null && Math.Abs(floor.angleLength - floor.prevfloor.angleLength) < 1e-14 && Math.Abs(speed - floor.speed) < 1e-14);
+                    while (floor != null && floor.prevfloor != null && Math.Abs(floor.angleLength - floor.prevfloor.angleLength) < 1e-14 && Math.Abs(speed - floor.speed) < 1e-14);
+                    // 同角度/同速度序列可能一直延伸到最后一格，floor 会变成 null；
+                    // 旧代码紧接着读 floor.seqID，尾部伪 BPM 检测会抛 NRE。
+                    if (floor == null)
+                    {
+                        _pseudoFloor = curFloor.seqID;
+                        cbpm = count = 0;
+                        return false;
+                    }
                     _pseudoFloor = floor.seqID - 1;
                     cbpm = count = 0; return false;
                 }

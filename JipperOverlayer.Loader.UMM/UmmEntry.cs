@@ -36,9 +36,29 @@ internal class UmmHandler : IModLoader
     public void Warning(string msg) => _logger.Warning(msg);
     public void Error(string msg) => _logger.Error(msg);
 
+    // UMM 的 OnToggle 返回 true 不会因为 Main 初始化失败自动重试；保留请求状态，
+    // 由 OnUpdate 以退避间隔重试，和 MelonLoader 的 Main.IsEnabled 回写行为一致。
+    private bool _requestedEnabled;
+    private DateTime _nextEnableRetry = DateTime.MinValue;
+
     // UMM event signatures carry ModEntry — we ignore it and forward the value
-    private void OnUpdateBridge(UnityModManager.ModEntry _, float dt) => OnUpdateEvent?.Invoke(dt);
-    private bool OnToggleBridge(UnityModManager.ModEntry _, bool v) { OnToggleEvent?.Invoke(v); return true; }
+    private void OnUpdateBridge(UnityModManager.ModEntry _, float dt)
+    {
+        OnUpdateEvent?.Invoke(dt);
+        if (_requestedEnabled && !Main.IsEnabled && DateTime.UtcNow >= _nextEnableRetry)
+        {
+            _nextEnableRetry = DateTime.UtcNow.AddSeconds(5);
+            OnToggleEvent?.Invoke(true);
+        }
+    }
+
+    private bool OnToggleBridge(UnityModManager.ModEntry _, bool v)
+    {
+        _requestedEnabled = v;
+        _nextEnableRetry = DateTime.MinValue;
+        OnToggleEvent?.Invoke(v);
+        return true;
+    }
     private void OnGUIBridge(UnityModManager.ModEntry _) => OnGUIEvent?.Invoke();
     private void OnSaveGUIBridge(UnityModManager.ModEntry _) => OnSaveGUIEvent?.Invoke();
 

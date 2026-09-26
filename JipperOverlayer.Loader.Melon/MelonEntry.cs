@@ -32,6 +32,7 @@ public class JipperMelonMod : MelonMod
         if (SettingsWindow.Enabled != null && !SettingsWindow.Enabled.Value) return;
         _enabled = true;
         Main.Enable();
+        _enabled = Main.IsEnabled;
     }
 
     public override void OnUpdate()
@@ -46,6 +47,7 @@ public class JipperMelonMod : MelonMod
         {
             _enabled = true;
             Main.Enable();
+            _enabled = Main.IsEnabled;
         }
         else if (!wantEnabled && _enabled)
         {
@@ -53,7 +55,8 @@ public class JipperMelonMod : MelonMod
             Main.Disable();
         }
 
-        _handler?.TriggerOnUpdate(Time.deltaTime);
+        if (_enabled)
+            _handler?.TriggerOnUpdate(Time.deltaTime);
     }
 
     public override void OnGUI()
@@ -63,6 +66,8 @@ public class JipperMelonMod : MelonMod
 
     public override void OnApplicationQuit()
     {
+        if (Main.Settings != null)
+            Main.Settings.OnSaveGUI();
         if (_enabled)
             Main.Disable();
     }
@@ -98,12 +103,8 @@ internal static class SettingsWindow
         _windowRect = GUILayout.Window(_windowId, _windowRect, DrawWindow, "Jipper Overlayer Settings",
             GUILayout.MinWidth(450), GUILayout.MaxWidth(800));
 
-        if (Enabled != null && !Enabled.Value)
-        {
-            _visible = false;
-            _awaitingKey = false;
-            MelonPreferences.Save();
-        }
+        // 模组关闭时保留设置窗口：用户可以直接重新勾选启用，不必跳到
+        // MelonLoader 外部偏好界面才能找回 F7 设置。
     }
 
     private static void DrawWindow(int id)
@@ -112,6 +113,17 @@ internal static class SettingsWindow
         {
             GUILayout.Label("Settings not loaded.");
             return;
+        }
+
+        if (Enabled != null && !Enabled.Value)
+        {
+            GUILayout.Label("Mod is disabled. Enable it to apply overlay changes.");
+            if (GUILayout.Button("Enable Mod", GUILayout.Height(24)))
+            {
+                Enabled.Value = true;
+                MelonPreferences.Save();
+            }
+            GUILayout.Space(4);
         }
 
         // Hotkey rebinding
@@ -154,6 +166,9 @@ internal static class SettingsWindow
         }
         if (GUILayout.Button("Close", GUILayout.Height(30), GUILayout.MinWidth(80)))
         {
+            // 关闭也保存，避免用户误点 Close 丢掉标签/颜色/位置等未提交编辑。
+            Main.Settings.OnSaveGUI();
+            MelonPreferences.Save();
             _visible = false;
             _awaitingKey = false;
         }

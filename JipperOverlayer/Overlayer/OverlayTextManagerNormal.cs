@@ -202,10 +202,18 @@ public class OverlayTextManagerNormal : IOverlayTextManager
     public void UpdateDeath(Overlay overlay)
     {
         var s = Main.Settings;
-        if (!s.ShowDeath || !overlay.GameObject.activeSelf || overlay.DeathText == null) return;
         int[] hits = overlay.Hit;
-        // 死亡数 = FailMiss + FailOverload（r150 下标为 10/11，不能写死 8/9）
-        if (_lastDeath != (_deathCount = HitMarginCompat.Get(hits, HitMarginCompat.FailMiss) + HitMarginCompat.Get(hits, HitMarginCompat.FailOverload)))
+        // 死亡数不仅驱动死亡文本，也驱动单人 State 的 Completed/Clear 分支；
+        // 因此即使文本隐藏、overlay 尚未激活，也要先更新内部计数。
+        _deathCount = HitMarginCompat.Get(hits, HitMarginCompat.FailMiss)
+                    + HitMarginCompat.Get(hits, HitMarginCompat.FailOverload);
+        if (!s.ShowDeath || !overlay.GameObject.activeSelf || overlay.DeathText == null)
+        {
+            // 重新打开开关时强制重绘一次，避免沿用隐藏前的旧文本。
+            _lastDeath = -1;
+            return;
+        }
+        if (_lastDeath != _deathCount)
         {
             _sb.Clear();
             _sb.Append("<color=white>");
@@ -239,7 +247,10 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         else
         {
             int[] hits = overlay.Hit;
-            if (_deathCount != 0) { state = labels.StateComplete; overlay.StateText.color = sColors.JStateComplete; }
+            // 不依赖 UpdateDeath 的文本门控/上一帧缓存：State 必须按本次判定数组判断。
+            int death = HitMarginCompat.Get(hits, HitMarginCompat.FailMiss)
+                      + HitMarginCompat.Get(hits, HitMarginCompat.FailOverload);
+            if (death != 0) { state = labels.StateComplete; overlay.StateText.color = sColors.JStateComplete; }
             else if (HitMarginCompat.Get(hits, HitMarginCompat.TooEarly) != 0) { state = labels.StateClear; overlay.StateText.color = sColors.JStateClear; }
             else if (HitMarginCompat.Get(hits, HitMarginCompat.VeryEarly) != 0 || HitMarginCompat.Get(hits, HitMarginCompat.VeryLate) != 0) { state = labels.StateNoMiss; overlay.StateText.color = sColors.JStateNoMiss; }
             else { state = labels.StatePerfectionist; overlay.StateText.color = sColors.JStatePerfectionist; }

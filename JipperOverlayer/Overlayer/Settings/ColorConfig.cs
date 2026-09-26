@@ -7,6 +7,8 @@ namespace JipperOverlayer.Overlayer;
 
 public class ColorConfig
 {
+    /// <summary>颜色文件 schema。0 = 旧文件（alpha==0 的兼容迁移只做一次）。</summary>
+    public int SchemaVersion;
     public ColorPerDictionary Progress = new([(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]);
     public ColorPerDictionary Accuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0));
     public ColorPerDictionary XAccuracy = new([(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0));
@@ -66,11 +68,34 @@ public class ColorConfig
 
     public void Save()
     {
-        try { File.WriteAllText(Path.Combine(Loader.ModPath, "colors.json"), JsonConvert.SerializeObject(this, Formatting.Indented)); }
+        try
+        {
+            SchemaVersion = 1;
+            Loader.WriteAllTextAtomic(Path.Combine(Loader.ModPath, "colors.json"), JsonConvert.SerializeObject(this, Formatting.Indented));
+        }
         catch (Exception e) { Loader.Warning($"Save colors failed: {e.Message}"); }
     }
 
     void EnsureDefaults()
+    {
+        if (JStateWaiting == null) JStateWaiting = new(Color.white);
+        if (JStateAutoTile == null) JStateAutoTile = new(new Color(1, 0.5f, 0));
+        if (JStateAuto == null) JStateAuto = new(new Color(0.1058824f, 1f, 0));
+        if (JStatePerfectPlay == null) JStatePerfectPlay = new(new Color(1, 0.8549f, 0));
+        if (JStateComplete == null) JStateComplete = new(Color.white);
+        if (JStateClear == null) JStateClear = new(Color.white);
+        if (JStateNoMiss == null) JStateNoMiss = new(Color.white);
+        if (JStatePerfectionist == null) JStatePerfectionist = new(Color.white);
+        if (JFps == null) JFps = new(Color.white);
+        if (JAuthor == null) JAuthor = new(Color.white);
+        if (JStart == null) JStart = new(Color.white);
+        JStateWaiting.Sanitize(); JStateAutoTile.Sanitize(); JStateAuto.Sanitize();
+        JStatePerfectPlay.Sanitize(); JStateComplete.Sanitize(); JStateClear.Sanitize();
+        JStateNoMiss.Sanitize(); JStatePerfectionist.Sanitize(); JFps.Sanitize();
+        JAuthor.Sanitize(); JStart.Sanitize();
+    }
+
+    void MigrateLegacyAlphaDefaults()
     {
         if (JStateWaiting.a == 0) JStateWaiting = new(Color.white);
         if (JStateAutoTile.a == 0) JStateAutoTile = new(new Color(1, 0.5f, 0));
@@ -87,15 +112,31 @@ public class ColorConfig
 
     public static ColorConfig Load()
     {
-        try {
-            string p = Path.Combine(Loader.ModPath, "colors.json");
-            if (File.Exists(p)) {
-                var jsonSettings = new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace };
-                var cc = JsonConvert.DeserializeObject<ColorConfig>(File.ReadAllText(p), jsonSettings);
-                if (cc != null) { cc.EnsureSorted(); cc.EnsureDefaults(); return cc; }
-            }
+        string path = Path.Combine(Loader.ModPath, "colors.json");
+        if (File.Exists(path))
+        {
+            try { return ReadColorFile(path); }
+            catch (Exception e) { Loader.Warning($"Load colors failed: {e.Message}"); }
         }
-        catch (Exception e) { Loader.Warning($"Load colors failed: {e.Message}"); }
-        return new ColorConfig();
+        string backup = path + ".bak";
+        if (File.Exists(backup))
+        {
+            try { return ReadColorFile(backup); }
+            catch (Exception e) { Loader.Warning($"Load colors backup failed: {e.Message}"); }
+        }
+        return new ColorConfig { SchemaVersion = 1 };
+    }
+
+    static ColorConfig ReadColorFile(string path)
+    {
+        var jsonSettings = new JsonSerializerSettings { ObjectCreationHandling = ObjectCreationHandling.Replace };
+        var cc = JsonConvert.DeserializeObject<ColorConfig>(File.ReadAllText(path), jsonSettings);
+        if (cc == null) throw new InvalidDataException("colors.json is empty");
+        cc.EnsureSorted();
+        cc.EnsureDefaults();
+        // alpha==0 的兼容修复只针对没有 schema 的旧文件执行一次；迁移后
+        // 用户明确设置的透明色会正常持久化。
+        if (cc.SchemaVersion < 1) { cc.MigrateLegacyAlphaDefaults(); cc.SchemaVersion = 1; cc.Save(); }
+        return cc;
     }
 }

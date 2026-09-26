@@ -89,7 +89,14 @@ internal static class HitMarginCompat
         catch { ReleaseNumber = -1; }
 
         int count = 0;
-        try { count = Enum.GetValues(typeof(HitMargin)).Length; } catch { }
+        try
+        {
+            var values = (HitMargin[])Enum.GetValues(typeof(HitMargin));
+            // 用最大下标+1而不是值个数，避免未来枚举出现别名/空洞时数组过短，
+            // 后段判定被静默丢弃。
+            foreach (var value in values) count = Math.Max(count, (int)value + 1);
+        }
+        catch { }
         Count = count > 0 ? count : (HasNativeXPerfect ? 16 : 12);
     }
 
@@ -346,7 +353,11 @@ internal static class GameCompat
                     {
                         var scheme = PatchManager.CreateStaticPropertyGetter<ColourSchemeHitMargin>(
                             typeof(RDC), "hitMarginColoursBySettings")();
+                        if (scheme == null)
+                            throw new InvalidOperationException("hitMarginColoursBySettings returned null");
                         var color = PatchManager.CreateMemberGetter<ColourSchemeHitMargin, Color>("colourXPerfect")(scheme);
+                        if (color == default(Color))
+                            throw new InvalidOperationException("colourXPerfect returned default Color");
                         _xPerfectHex = ColorUtility.ToHtmlStringRGB(color);
                         Loader.Log($"GameCompat: XPerfect 显示色 <- 游戏 colourXPerfect #{_xPerfectHex}");
                     }
@@ -380,12 +391,16 @@ internal static class AccuracyMath
     /// seqID 恒落后一格，用 seqID 会把满分算成 MAX--2，直到结算才恢复。
     /// 检查点重试时游戏清零 hitMarginsCount，此式也随之归零，与原生 acc 重开一致。</summary>
     public static int GetJudgedTiles(int[] hits, int seqID)
-        => HitMarginCompat.HasNativeXPerfect
+    {
+        if (hits == null) return 0;
+        return HitMarginCompat.HasNativeXPerfect
             ? SumHits(hits) - HitMarginCompat.Get(hits, HitMarginCompat.Midspin)
             : SumHits(hits);
+    }
 
     static int SumHits(int[] hits)
     {
+        if (hits == null) return 0;
         int sum = 0;
         for (int i = 0; i < hits.Length; i++) sum += hits[i];
         return sum;
@@ -433,22 +448,44 @@ internal static class AccuracyMath
     }
 
     static FieldInfo _playerHitFloorsField;
+    // 缓存必须同时绑定关卡身份与自动模式：只记 seqID 会让「换图后 seqID 恰为
+    // 同一值」或编辑器/auto 切换后复用旧的剩余玩家打击格数，算错 XScore MAX−n。
+    static scrLevelMaker _remPlayerLevelMaker;
+    static IReadOnlyList<scrFloor> _remPlayerFloors;
+    static bool _remPlayerAuto;
     static int _remPlayerSeqID = -1, _remPlayerCount;
 
     /// <summary>剩余「玩家打击格」数（seqID>0 且非 auto、非 midspin 的格子）。
-    /// 与原生 maxXScore 同口径，按 seqID 记忆化；反射失败退回全格口径。</summary>
+    /// 与原生 maxXScore 同口径，按关卡对象+列表+auto 状态+seqID 记忆化；反射失败退回全格口径。</summary>
     public static int GetRemainingPlayerHitFloors(int seqID)
     {
         if (!HitMarginCompat.HasNativeXPerfect) return GetRemainingTiles(seqID);
-        if (_remPlayerSeqID == seqID) return _remPlayerCount;
+        var levelMaker = GameRefs.LevelMaker;
+        if (levelMaker == null)
+        {
+            _remPlayerLevelMaker = null;
+            _remPlayerFloors = null;
+            _remPlayerSeqID = -1;
+            _remPlayerCount = 0;
+            return 0;
+        }
         _playerHitFloorsField ??= AccessTools.Field(typeof(scrLevelMaker), "PlayerHitFloors");
+        var floors = _playerHitFloorsField?.GetValue(levelMaker) as IReadOnlyList<scrFloor>;
+        bool auto = GameRefs.IsAuto;
+        if (ReferenceEquals(_remPlayerLevelMaker, levelMaker)
+            && ReferenceEquals(_remPlayerFloors, floors)
+            && _remPlayerAuto == auto && _remPlayerSeqID == seqID)
+            return _remPlayerCount;
         int count;
-        if (_playerHitFloorsField?.GetValue(ADOBase.lm) is IReadOnlyList<scrFloor> floors)
+        if (floors != null)
         {
             count = 0;
             foreach (var f in floors) if (f != null && f.seqID > seqID) count++;
         }
         else count = GetRemainingTiles(seqID);
+        _remPlayerLevelMaker = levelMaker;
+        _remPlayerFloors = floors;
+        _remPlayerAuto = auto;
         _remPlayerSeqID = seqID;
         return _remPlayerCount = count;
     }

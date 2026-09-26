@@ -37,7 +37,6 @@ public static class VersionSafe
     public static void Setup()
     {
         if (IsInitialized) return;
-        IsInitialized = true;
 
         IsV141OrLater = DetectApiVersion();
         // 版本细分：旧探测只能分 v136/v141+；兼容层补充精确 release 号、HitMargin 取值数与 XPerfect 来源
@@ -47,6 +46,9 @@ public static class VersionSafe
             BindV141Delegates();
         else
             BindV136Delegates();
+        // 只有全部绑定成功才置 initialized；失败时 Main 的回滚后下一次
+        // Enable 仍会重新探测，不会被半初始化的静态状态永久短路。
+        IsInitialized = true;
     }
 
     private static bool DetectApiVersion()
@@ -103,7 +105,7 @@ public static class VersionSafe
 
         _getPlanetSpeed = ctrl =>
         {
-            if (ctrl.playerOne?.planetarySystem != null)
+            if (ctrl != null && ctrl.playerOne?.planetarySystem != null)
                 return ctrl.playerOne.planetarySystem.speed;
             return 1.0;
         };
@@ -132,7 +134,7 @@ public static class VersionSafe
         _isCoopMode = () => GetPlayerCount() > 1;
         _getHideWithNoAuto = instance => instance.hideWithNoAuto;
 
-        _getPlayerCount = () => scrMistakesManager.marginTrackers?.Length ?? 1;
+        _getPlayerCount = () => Math.Max(1, scrMistakesManager.marginTrackers?.Length ?? 1);
 
         _getPlayerIndex = tracker =>
         {
@@ -148,14 +150,14 @@ public static class VersionSafe
         };
         _getHitMarginsCountForPlayer = (playerIdx) =>
         {
-            if (scrMistakesManager.marginTrackers == null || playerIdx >= scrMistakesManager.marginTrackers.Length)
+            if (playerIdx < 0 || scrMistakesManager.marginTrackers == null || playerIdx >= scrMistakesManager.marginTrackers.Length)
                 return NewEmptyCounts();
             return scrMistakesManager.marginTrackers[playerIdx]?.hitMarginsCount ?? NewEmptyCounts();
         };
 
         _getPlayerColorHex = (playerIdx) =>
         {
-            if (scrPlayerManager.playerColors == null || playerIdx >= scrPlayerManager.playerColors.Length)
+            if (playerIdx < 0 || scrPlayerManager.playerColors == null || playerIdx >= scrPlayerManager.playerColors.Length)
                 return "FFFFFF";
             Color c = scrPlayerManager.playerColors[playerIdx].ToRealColor();
             if (_cachedPlayerHexIdx == playerIdx && _cachedPlayerHexColor == c)

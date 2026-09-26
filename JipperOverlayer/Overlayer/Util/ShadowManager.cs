@@ -7,7 +7,22 @@ namespace JipperOverlayer.Overlayer.Util;
 
 internal static class ShadowManager
 {
-    internal static readonly Shader ShaderRef = PatchManager.CreateStaticPropertyGetter<Shader>(typeof(ShaderUtilities), "ShaderRef_MobileSDF")();
+    internal static readonly Shader ShaderRef = ProbeShaderRef();
+
+    static Shader ProbeShaderRef()
+    {
+        try
+        {
+            return PatchManager.CreateStaticPropertyGetter<Shader>(typeof(ShaderUtilities), "ShaderRef_MobileSDF")();
+        }
+        catch (Exception e)
+        {
+            // 旧/新 Unity 版本可能改名/移除该属性；阴影应退化为普通字体材质，
+            // 不能让 ShadowManager 的静态初始化直接中断 Overlay 构造。
+            Loader.Warning($"Shadow: ShaderRef_MobileSDF unavailable ({e.Message})");
+            return null;
+        }
+    }
 
     private static readonly Dictionary<TMP_FontAsset, Material> MaterialCache = new();
     private static System.Reflection.MemberInfo _cachedMaterialMember;

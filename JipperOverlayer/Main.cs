@@ -11,10 +11,12 @@ public static class Main
 {
     public static Harmony Harmony { get; private set; }
     public static Settings Settings { get; private set; }
+    public static bool IsEnabled => _enabled;
 
     private static Overlay _overlay;
     private static GameObject _overlayGo;
     private static bool _enabled;
+    private static DateTime _enableRetryAfter = DateTime.MinValue;
 
     public static void Init(IModLoader loader)
     {
@@ -48,30 +50,55 @@ public static class Main
 
     public static void Enable()
     {
-        if (_enabled) return;
+        if (_enabled || DateTime.UtcNow < _enableRetryAfter) return;
         _enabled = true;
 
-        Log("JipperOverlayer enabled.");
-
-        PatchManager.Initialize(Harmony);
-        GameRefs.BindDelegates();
-        VersionSafe.Setup();
-        RegisterFeatures();
-
-        AssetLoader.Load();
-        FontManager.ScanFonts();
-        PlayCount.Load();
-
-        if (_overlayGo == null)
+        try
         {
-            _overlayGo = new GameObject("JipperOverlayer");
-            UnityEngine.Object.DontDestroyOnLoad(_overlayGo);
+            Log("JipperOverlayer enabled.");
+
+            PatchManager.Initialize(Harmony);
+            GameRefs.BindDelegates();
+            VersionSafe.Setup();
+            RegisterFeatures();
+
+            AssetLoader.Load();
+            FontManager.ScanFonts();
+            PlayCount.Load();
+
+            if (_overlayGo == null)
+            {
+                _overlayGo = new GameObject("JipperOverlayer");
+                UnityEngine.Object.DontDestroyOnLoad(_overlayGo);
+            }
+
+            CreateOverlay();
+            PatchManager.ApplyAll();
+            // 先挂补丁再首次 Show，确保局内启用时首个精度/判定/进度事件不会因
+            // activeSelf 尚未切换或补丁尚未注册而丢失。StartTile 必须是当前 seqID，
+            // 不能把局内重新启用误当成从第 0 格开始的新尝试。
+            if (GameRefs.IsGameReady && GameRefs.LevelMaker != null)
+            {
+                if (GameRefs.IsPaused)
+                {
+                    _overlay.Show(GameRefs.CurrentSeqID, suppressNativeUI: true);
+                    if (_overlay.Canvas) _overlay.Canvas.enabled = false;
+                }
+                else
+                    _overlay.Show(GameRefs.CurrentSeqID);
+            }
+
+            SceneManager.sceneUnloaded += OnSceneUnloaded;
+            _enableRetryAfter = DateTime.MinValue;
         }
-
-        CreateOverlay();
-        PatchManager.ApplyAll();
-
-        SceneManager.sceneUnloaded += OnSceneUnloaded;
+        catch (Exception e)
+        {
+            // 资源/补丁初始化失败时给宿主一个短退避，避免 MelonLoader 每帧重试
+            // 完整扫描字体并刷屏日志；下一轮 OnUpdate 会自动再试。
+            _enableRetryAfter = DateTime.UtcNow.AddSeconds(5);
+            Error($"Enable failed; rolling back: {e}");
+            try { Disable(); } catch (Exception rollback) { Error($"Rollback failed: {rollback}"); }
+        }
     }
 
     public static void Disable()
@@ -82,19 +109,26 @@ public static class Main
         Log("JipperOverlayer disabled.");
         SceneManager.sceneUnloaded -= OnSceneUnloaded;
 
-        _overlay?.Destroy();
+        // 禁用发生在场景回调/资源异常时也要尽力完成所有清理；某一步失败不能
+        // 阻止后续 unpatch，否则 Harmony 补丁会残留在游戏进程中。
+        try { _overlay?.Destroy(); } catch (Exception e) { Error($"Overlay destroy failed: {e.Message}"); }
         _overlay = null;
         Overlay.Instance = null;
 
-        if (_overlayGo != null)
+        try
         {
-            UnityEngine.Object.Destroy(_overlayGo);
-            _overlayGo = null;
+            if (_overlayGo != null)
+            {
+                UnityEngine.Object.Destroy(_overlayGo);
+                _overlayGo = null;
+            }
         }
+        catch (Exception e) { Error($"Overlay GameObject destroy failed: {e.Message}"); }
 
-        PlayCount.Dispose();
-        AssetLoader.Unload();
-        PatchManager.UnpatchAll();
+        try { PlayCount.Dispose(); } catch (Exception e) { Error($"Play data cleanup failed: {e.Message}"); }
+        try { XPerfectIntegration.ResetForModDisable(); } catch (Exception e) { Error($"XPerfect cleanup failed: {e.Message}"); }
+        try { AssetLoader.Unload(); } catch (Exception e) { Error($"Asset cleanup failed: {e.Message}"); }
+        try { PatchManager.UnpatchAll(); } catch (Exception e) { Error($"Patch cleanup failed: {e.Message}"); }
     }
 
     private static void RegisterFeatures()

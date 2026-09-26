@@ -113,7 +113,35 @@ public class ColorCache {
         return sb.ToString();
     }
 
-    static int Normalize(float v) => v switch { <= 0 => 0, >= 1 => 255, _ => (int)Math.Round(v * 255) };
+    static int Normalize(float v)
+    {
+        if (float.IsNaN(v)) return 0;
+        if (float.IsPositiveInfinity(v)) return 255;
+        if (float.IsNegativeInfinity(v)) return 0;
+        return v switch { <= 0 => 0, >= 1 => 255, _ => (int)Math.Round(v * 255) };
+    }
 
-    public static implicit operator Color(ColorCache c) { var col = default(Color); col.r = c.r; col.g = c.g; col.b = c.b; col.a = c.a; return col; }
+    public static implicit operator Color(ColorCache c)
+    {
+        if (c == null) return Color.white;
+        var col = default(Color);
+        col.r = Safe01(c.r);
+        col.g = Safe01(c.g);
+        col.b = Safe01(c.b);
+        col.a = Safe01(c.a);
+        return col;
+    }
+
+    public void Sanitize()
+    {
+        r = Safe01(r); g = Safe01(g); b = Safe01(b); a = Safe01(a);
+    }
+
+    static float Safe01(float v)
+    {
+        if (float.IsNaN(v)) return 0;
+        if (float.IsPositiveInfinity(v)) return 1;
+        if (float.IsNegativeInfinity(v)) return 0;
+        return Mathf.Clamp01(v);
+    }
 }

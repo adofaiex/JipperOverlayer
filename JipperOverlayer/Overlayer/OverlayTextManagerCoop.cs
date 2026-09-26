@@ -16,15 +16,34 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     public int LastCheckpoint = -1;
     private string[] _accStrings;
     private string[] _xaccStrings;
+    private string[] _progressStrings;
 
     public OverlayTextManagerCoop(Overlay overlay)
     {
-        PlayerDatas = new PlayerData[scrPlayerManager.playerCount];
+        int count = Math.Max(1, scrPlayerManager.playerCount);
+        PlayerDatas = new PlayerData[count];
         _accStrings = new string[PlayerDatas.Length + 1];
         _xaccStrings = new string[PlayerDatas.Length + 1];
+        _progressStrings = new string[PlayerDatas.Length + 1];
         if (overlay.ProgressText) overlay.ProgressText.color = Color.white;
         if (overlay.AccuracyText) overlay.AccuracyText.color = Color.white;
         if (overlay.XAccuracyText) overlay.XAccuracyText.color = Color.white;
+    }
+
+    static bool TryGetPlayer(int index, out scrPlayer player)
+    {
+        player = null;
+        var manager = scrPlayerManager.instance;
+        var players = manager?.allPlayers;
+        if (players == null || index < 0 || index >= players.Length) return false;
+        player = players[index];
+        return player != null;
+    }
+
+    static int? GetPlayerSeqID(int index)
+    {
+        if (!TryGetPlayer(index, out var player)) return null;
+        return player.planetarySystem?.chosenPlanet?.currfloor?.seqID;
     }
 
     public void SetBest(float best) => CurBest = best;
@@ -32,18 +51,21 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     public void CacheProgress(scrPlanet planet)
     {
         var allFloors = GameRefs.LevelMaker?.listFloors;
-        if (allFloors == null) return;
+        if (allFloors == null || allFloors.Count == 0) return;
         float count = allFloors.Count;
         if ((object)planet == null)
         {
             for (int i = 0; i < PlayerDatas.Length; i++)
-                SetProgress(ref PlayerDatas[i],
-                    (scrPlayerManager.instance.allPlayers[i].planetarySystem.chosenPlanet.currfloor.seqID + 1) / count);
+            {
+                int? seq = GetPlayerSeqID(i);
+                if (seq.HasValue) SetProgress(ref PlayerDatas[i], (seq.Value + 1) / count);
+            }
         }
         else
         {
-            SetProgress(ref PlayerDatas[planet.player.playerID],
-                (planet.currfloor.seqID + 1) / count);
+            int index = planet.player?.playerID ?? -1;
+            if (index >= 0 && index < PlayerDatas.Length && planet.currfloor != null)
+                SetProgress(ref PlayerDatas[index], (planet.currfloor.seqID + 1) / count);
         }
     }
 
@@ -68,7 +90,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             if (index == -1)
                 for (int i = 0; i < PlayerDatas.Length; i++)
                     SetAccuracy(ref PlayerDatas[i], overlay, i);
-            else SetAccuracy(ref PlayerDatas[index], overlay, index);
+            else if (index >= 0 && index < PlayerDatas.Length)
+                SetAccuracy(ref PlayerDatas[index], overlay, index);
 
             _accStrings[0] = Main.Settings.Labels.Accuracy;
             for (int i = 0; i < PlayerDatas.Length; i++) _accStrings[i + 1] = PlayerDatas[i].AccuracyString;
@@ -79,7 +102,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             if (index == -1)
                 for (int i = 0; i < PlayerDatas.Length; i++)
                     SetXAccuracy(ref PlayerDatas[i], i);
-            else SetXAccuracy(ref PlayerDatas[index], index);
+            else if (index >= 0 && index < PlayerDatas.Length)
+                SetXAccuracy(ref PlayerDatas[index], index);
 
             _xaccStrings[0] = Main.Settings.Labels.XAccuracy;
             for (int i = 0; i < PlayerDatas.Length; i++) _xaccStrings[i + 1] = PlayerDatas[i].XAccuracyString;
@@ -90,7 +114,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             if (index == -1)
                 for (int i = 0; i < PlayerDatas.Length; i++)
                     SetXScore(ref PlayerDatas[i], i);
-            else SetXScore(ref PlayerDatas[index], index);
+            else if (index >= 0 && index < PlayerDatas.Length)
+                SetXScore(ref PlayerDatas[index], index);
 
             var xs = overlay.ExtendedOverlay?.XScoreText;
             if (xs)
@@ -106,16 +131,19 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     protected void SetAccuracy(ref PlayerData pData, Overlay overlay, int i)
     {
         var s = Main.Settings;
-        float acc = scrMistakesManager.marginTrackers[i].percentAcc;
-        float maxAcc = 1 + (scrPlayerManager.instance.allPlayers[i].planetarySystem.chosenPlanet.currfloor.seqID - overlay.NoCheckStartTile + 1) * 0.0001f;
-        float xacc = scrMistakesManager.marginTrackers[i].percentXAcc;
+        var trackers = scrMistakesManager.marginTrackers;
+        if (trackers == null || i < 0 || i >= trackers.Length || trackers[i] == null) return;
+        float acc = trackers[i].percentAcc;
+        int? playerSeq = GetPlayerSeqID(i);
+        float maxAcc = 1 + ((playerSeq ?? GameRefs.CurrentSeqID) - overlay.NoCheckStartTile + 1) * 0.0001f;
+        float xacc = trackers[i].percentXAcc;
         if (float.IsNaN(xacc)) xacc = 1;
         string current = Math.Round(acc * 100, s.AccuracyDecimal) + "%";
         if (s.AccuracyTextType != PotentialTextType.Current)
         {
             // 潜力值：各玩家用自己的判定数组外推。coop 无独立潜力文本槽，全部内联进主文本
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
-            int seqID = GameRefs.CurrentSeqID;
+            int seqID = GetPlayerSeqID(i) ?? GameRefs.CurrentSeqID;
             float potential = AccuracyMath.GetPotentialAccuracy(hits, acc,
                 AccuracyMath.GetJudgedTiles(hits, seqID), AccuracyMath.GetRemainingTiles(seqID));
             string p = Math.Round(potential * 100, s.AccuracyDecimal) + "%";
@@ -128,12 +156,14 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     protected void SetXAccuracy(ref PlayerData pData, int i)
     {
         var s = Main.Settings;
-        float xacc = scrMistakesManager.marginTrackers[i].percentXAcc;
+        var trackers = scrMistakesManager.marginTrackers;
+        if (trackers == null || i < 0 || i >= trackers.Length || trackers[i] == null) return;
+        float xacc = trackers[i].percentXAcc;
         if (float.IsNaN(xacc)) xacc = 1;
         string current = Math.Round(xacc * 100, s.XAccuracyDecimal) + "%";
         if (s.XAccuracyTextType != PotentialTextType.Current)
         {
-            int seqID = GameRefs.CurrentSeqID;
+            int seqID = GetPlayerSeqID(i) ?? GameRefs.CurrentSeqID;
             // 与单人路径一致：已判定数必须经 GetJudgedTiles 扣除 Midspin（r149+）。
             // 原实现直接拿 seqID 当已判定数，含 Midspin 的图里潜力 X 精度会偏。
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
@@ -150,7 +180,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     {
         var s = Main.Settings;
         int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
-        int seqID = GameRefs.CurrentSeqID;
+        int seqID = GetPlayerSeqID(i) ?? GameRefs.CurrentSeqID;
         int judged = AccuracyMath.GetJudgedTiles(hits, seqID);
         int remaining = AccuracyMath.GetRemainingTiles(seqID);
         // 原生读数 + 游戏结算同口径（MAX−n = maxXScore − xScore − 2×剩余玩家打击格）
@@ -184,7 +214,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
 
     public void UpdateProgress(Overlay overlay)
     {
-        var strings = new string[PlayerDatas.Length + 1];
+        var strings = _progressStrings;
         strings[0] = Main.Settings.Labels.Progress;
         if (overlay.StartTile > 0)
             strings[0] += $" | <color=#{Main.Settings.Colors.GetProgressHex(overlay.StartProgress, true)}>{Math.Round(overlay.StartProgress * 100, Main.Settings.ProgressDecimal)}%</color> ~";
@@ -293,8 +323,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         sb.Append("</color>");
         for (int i = 0; i < count; i++)
         {
+            if (!TryGetPlayer(i, out var p)) continue;
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
-            var p = scrPlayerManager.instance.allPlayers[i];
             string state = GetPlayerState(p, hits, overlay);
             string hex = VersionSafe.GetPlayerColorHex(i);
             sb.Append(" | <color=#");

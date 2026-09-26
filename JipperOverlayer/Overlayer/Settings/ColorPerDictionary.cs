@@ -32,11 +32,29 @@ public class ColorPerDictionary {
 
     // Call after deserialization to ensure list is sorted
     public void EnsureSorted() {
+        // 旧配置/手改 JSON 可能把 List 置 null，或留下 NaN/Infinity 的进度点。
+        // 先做有限值过滤再排序，避免二分与插值把坏值带进每帧显示路径。
+        List ??= new List<ProgressColorCache>();
+        for (int i = List.Count - 1; i >= 0; i--)
+        {
+            var stop = List[i];
+            if (stop == null || !IsFinite(stop.Progress))
+                List.RemoveAt(i);
+            else
+            {
+                stop.Progress = Mathf.Clamp01(stop.Progress);
+                stop.Sanitize();
+            }
+        }
         List.Sort((a, b) => a.Progress.CompareTo(b.Progress));
         InvalidateHexLut();
     }
 
+    static bool IsFinite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
+
     public Color GetColor(float key, bool noCache = false) {
+        if (float.IsNaN(key)) key = 0;
+        else if (float.IsInfinity(key)) key = key > 0 ? 1 : 0;
         if (key < 0) key = 0;
         if (key > 1) key = 1;
         if (!noCache && _lastKey == key && _lastColor.HasValue) return _lastColor.Value;
@@ -51,7 +69,11 @@ public class ColorPerDictionary {
             else {
                 float s = List[index - 1].Progress;
                 float e = List[index].Progress;
-                result = Color.Lerp(List[index - 1], List[index], (key - s) / (e - s));
+                // 用户可以拖出两个相同百分比的色点；此时插值分母为 0，
+                // 旧代码会产生 NaN 颜色并污染整段渐变。退化为后一个色点。
+                result = e - s > 1e-6f
+                    ? Color.Lerp(List[index - 1], List[index], (key - s) / (e - s))
+                    : List[index];
             }
         }
         if (!noCache) {
@@ -74,7 +96,9 @@ public class ColorPerDictionary {
     public string GetHex(float key, bool includeAlpha = false)
     {
         EnsureHexLut();
-        if (key < 0) key = 0;
+        if (float.IsNaN(key)) key = 0;
+        else if (float.IsInfinity(key)) key = key > 0 ? 1 : 0;
+        else if (key < 0) key = 0;
         else if (key > 1) key = 1;
         var lut = includeAlpha ? _hexLutRgba : _hexLutRgb;
         return lut[(int)(key * (HexLutSize - 1) + 0.5f)];
@@ -96,7 +120,14 @@ public class ColorPerDictionary {
         _hexLutDirty = false;
     }
 
-    private void InvalidateHexLut() => _hexLutDirty = true;
+    private void InvalidateHexLut()
+    {
+        _hexLutDirty = true;
+        // GetColor 的单项缓存也必须失效：EnsureHexLut 烘焙时会调用 GetColor，
+        // 旧缓存会让编辑后的同一条 stop 继续返回旧颜色。
+        _lastKey = -1f;
+        _lastColor = null;
+    }
 
     int BinarySearch(float value) {
         if (List.Count == 0) return 0;

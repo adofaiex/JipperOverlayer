@@ -23,12 +23,16 @@ namespace JipperOverlayer
 
         private static bool _subscribedToToggle;
         private static bool _notInstalled; // XPerfect 未安装:运行时无法装上,永久跳过探测
+        private static DateTime _nextProbeAt = DateTime.MinValue;
+        private static readonly TimeSpan ProbeInterval = TimeSpan.FromMilliseconds(250);
 
         /// <summary>懒加载：在需要时调用（如 UpdateJudgement 或 OnUpdate）。
-        /// 未安装 → 永久短路;安装未启用 → 保持每帧探测;已启用使用 → IsAvailable 短路,仅关闭时经 OnToggle 恢复。</summary>
+        /// 未安装 → 永久短路;安装未启用 → 每 250ms 探测一次而非每帧;已启用使用 → IsAvailable 短路,仅关闭时经 OnToggle 恢复。</summary>
         public static void EnsureInitialized()
         {
             if (IsAvailable || _notInstalled) return;
+            if (DateTime.UtcNow < _nextProbeAt) return;
+            _nextProbeAt = DateTime.UtcNow + ProbeInterval;
             try
             {
                 TryCache();
@@ -119,8 +123,9 @@ namespace JipperOverlayer
                 // 首次探测成功：刷新判定窗口（X 行）——TryCache 内部已刷新 Judgement
                 if (IsAvailable && !wasAvailable)
                     RefreshBpmOverlay();
-                if (!IsAvailable)
-                    _subscribedToToggle = false;
+                // 不在这里复位 _subscribedToToggle：UMM 的 OnToggle 事件不会因为
+                // 逻辑标志复位而自动移除，反复置 false 只会让下次探测重复 += 同一个
+                // 回调，长期启停后 handler 数量不断增长。
             }
             else
             {
@@ -134,9 +139,17 @@ namespace JipperOverlayer
                     var o = Overlayer.Overlay.Instance;
                     if (o != null) { o.UpdateJudgement(); RefreshBpm(o); }
                 }
-                _subscribedToToggle = false;
             }
             return true;
+        }
+
+        /// <summary>主模组卸载时清理探测状态；UMM 的 OnToggle 订阅保留，重新启用后可再次探测。</summary>
+        public static void ResetForModDisable()
+        {
+            IsAvailable = false;
+            _getXPerfect = _getPlusPerfect = _getMinusPerfect = null;
+            _getPlayerXPerfect = _getPlayerPlusPerfect = _getPlayerMinusPerfect = null;
+            _nextProbeAt = DateTime.MinValue;
         }
 
         /// <summary>使 BPM 缓存失效并立即重绘（判定窗口 X 行随 XPerfect 可用性变化）。</summary>

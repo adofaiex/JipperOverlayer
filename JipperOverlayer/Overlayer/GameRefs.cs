@@ -42,7 +42,6 @@ public static class GameRefs
     internal static void BindDelegates()
     {
         if (_delegatesBound) return;
-        _delegatesBound = true;
 
         // ADOBase
         _getController = TryStaticPropertyGetter<scrController>(typeof(ADOBase), "controller");
@@ -82,6 +81,9 @@ public static class GameRefs
         // scnGame / scnEditor
         _getGameInstance   = TryStaticFieldGetter<scnGame>(typeof(scnGame), "instance");
         _getEditorInstance = TryStaticFieldGetter<scnEditor>(typeof(scnEditor), "instance");
+        // 与 VersionSafe 一样，只有全部绑定完成才置成功标志；异常回滚后
+        // 下一次 Enable 会重新绑定，而不是沿用半初始化的静态状态。
+        _delegatesBound = true;
     }
 
     private static Func<TField> TryStaticPropertyGetter<TField>(Type type, string name)

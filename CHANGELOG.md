@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Diagnostics panel**: settings can show the detected game API, loader, XPerfect source, font inventory and overlay state, and copy the report to the clipboard
+- **Font rescan**: `CustomFonts` can be rescanned from the settings panel without restarting the game
+- **Local data recovery**: settings, labels and colors now use atomic `.tmp` + replace writes with `.bak` backups; Plays.dat uses the same atomic replacement
+- **MelonLoader settings UX**: the settings window stays reachable when `ModEnabled` is off, and both Save/Close paths persist edits
+- **API verification hardening**: explicit `Libs` paths must contain `Assembly-CSharp.dll` (invalid paths now fail with exit code 2), and r150-only XScore/colour members are checked
+- Failed enablement now backs off before retrying; checkpoint discovery distinguishes “not ready” from “no checkpoints”, and legacy display order is migrated only when the new field is absent
+
+### Performance
+
+- Settings visibility is refreshed only when a control actually changes instead of on every IMGUI Layout event
+- Map time, canvas state and optional time updates are throttled/cached; XPerfect probing is limited to 4 Hz when the external mod is installed but disabled
+- Coop progress strings reuse their buffers, and the author lookup caches its reflected property
+
+### Bug Fixes
+
+- Display toggles now re-register their Harmony patches after a change; enabling BPM/judgement/accuracy/combo/progress in-game no longer leaves their updates frozen
+- Checkpoint retries clear timing samples, show the current floor on re-enable, and settle pending attempt/best state before the overlay is destroyed
+- Timing-window visibility, AvgTiming layout, Full-Attempt-only startup, cross-map XScore caching, and state/death refresh order are corrected
+- Legacy display-order arrays, out-of-range numeric settings, invalid color stops and malformed play data are normalized defensively
+
 ## v1.1.6 — 2026.09.19
 
 ### Features

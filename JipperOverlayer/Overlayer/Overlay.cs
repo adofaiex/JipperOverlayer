@@ -18,6 +18,8 @@ public class Overlay
     public IOverlayTextManager OverlayTextManager;
     public GameObject GameObject;
     public Canvas Canvas;
+    internal bool TimeDisplayNeeded => Main.Settings != null
+        && (Main.Settings.ShowMusicTime || Main.Settings.ShowMapTime);
     public TextMeshProUGUI ProgressText;
     public TextMeshProUGUI AccuracyText;
     public TextMeshProUGUI XAccuracyText;
@@ -52,7 +54,13 @@ public class Overlay
     internal int LastMapTime = -1;
     internal int StartTile;
     public int NoCheckStartTile;
+    // 首次启用时 Main 可能在 scnGame.Play 之前主动 Show；随后 Play 又会
+    // 触发同一 floor。记录本次显示身份，吞掉完全重复的 Show，避免重复计一次尝试。
+    private int _lastShownSeqID = -1;
+    private int _lastShownCheckpoints = -1;
+    private int _lastShownPlayers = -1;
     public int[] Checkpoints;
+    internal bool CheckpointsResolved;
     internal float LastTileBpm = -1;
     internal float LastCurBpm = -1;
     internal bool SongPlaying;
@@ -77,6 +85,7 @@ public class Overlay
     private static readonly StringBuilder _twSb = new(64);
     private float _lastTimingScale = -1f;
     private int _lastTwP = -1, _lastTwX = -1, _lastTwGr = -1, _lastTwGd = -1;
+    private bool _lastTwValid = false;
     private OverlayMono _mono;
 
     private static readonly IReadOnlyList<TextMeshProUGUI> _emptyTexts = Array.Empty<TextMeshProUGUI>();
@@ -111,8 +120,8 @@ public class Overlay
         _mono.enabled = false;
         RefreshTimeLabels();
         Object.DontDestroyOnLoad(GameObject);
-        if (!GameRefs.IsPaused && GameRefs.IsGameWorld)
-            Show(0);
+        // 初始 Show 由 Main.Enable 在 Harmony 补丁全部应用后执行；构造函数不再
+        // 固定以 floor 0 抢先显示，否则局内启用模组会把 checkpoint 当作新地图开头。
     }
 
     public void OnChangePlayers()
@@ -554,9 +563,14 @@ public class Overlay
     public void RefreshVisibility()
     {
         var s = Main.Settings;
+        bool coop = VersionSafe.IsCoopMode();
+        int playerCount = coop ? VersionSafe.GetPlayerCount() : 1;
+        int judgeCount = coop ? Math.Min(Math.Max(1, playerCount), 4) : 1;
         if (_mainContainer) _mainContainer.SetActive(s.AnyStackedTextVisible);
         if (_bpmObject) { _bpmObject.SetActive(s.ShowBPM); if (s.ShowBPM && GameObject.activeSelf) UpdateBPM(); }
-        for (int i = 0; i < 4; i++) if (_judgementObjects[i]) _judgementObjects[i].SetActive(s.ShowJudgement && i < (VersionSafe.IsCoopMode() && VersionSafe.GetPlayerCount() > 1 ? Math.Min(VersionSafe.GetPlayerCount(), 4) : 1)); if (s.ShowJudgement) { SetupLocationJudgement(); if (GameObject.activeSelf) UpdateJudgement(); }
+        for (int i = 0; i < 4; i++)
+            if (_judgementObjects[i]) _judgementObjects[i].SetActive(s.ShowJudgement && i < judgeCount);
+        if (s.ShowJudgement) { SetupLocationJudgement(); if (GameObject.activeSelf) UpdateJudgement(); }
         if (_comboObject) { _comboObject.SetActive(s.ShowCombo); if (s.ShowCombo && GameObject.activeSelf) UpdateCombo(Features.GameLifecycleHelper.ComboCount, false); }
         if (_timingScaleObject) { _timingScaleObject.SetActive(s.ShowTimingScale); if (s.ShowTimingScale && GameObject.activeSelf) UpdateTimingScale(); }
         if (_attemptObject) { _attemptObject.SetActive(s.ShowAttempt || s.ShowFullAttempt); if (_attemptObject.activeSelf) UpdateAttempts(); }
@@ -598,18 +612,33 @@ public class Overlay
         rt.anchoredPosition = BetaWatermarkOriginalPos.Value;
     }
 
-    internal static int[] CollectCheckpoints()
+    internal static int[] CollectCheckpoints(out bool resolved)
     {
         var floors = GameRefs.LevelMaker?.listFloors;
-        if (floors == null) return Array.Empty<int>();
+        // 关卡尚未填充时 resolved=false，允许下一次布局重试；已确认没有检查点时
+        // 返回空数组并缓存，避免设置窗口每帧重复扫描整张地图。
+        if (floors == null || floors.Count == 0)
+        {
+            resolved = false;
+            return null;
+        }
         int count = 0;
         for (int i = 0; i < floors.Count; i++)
-            if (floors[i].GetComponent<ffxCheckpoint>()) count++;
+            if (floors[i] != null && floors[i].GetComponent<ffxCheckpoint>()) count++;
+        resolved = true;
+        if (count == 0) return Array.Empty<int>();
         int[] result = new int[count];
         int idx = 0;
         for (int i = 0; i < floors.Count; i++)
-            if (floors[i].GetComponent<ffxCheckpoint>()) result[idx++] = floors[i].seqID;
+            if (floors[i] != null && floors[i].GetComponent<ffxCheckpoint>()) result[idx++] = floors[i].seqID;
         return result;
+    }
+
+    internal void ResolveCheckpoints()
+    {
+        if (CheckpointsResolved) return;
+        var result = CollectCheckpoints(out bool resolved);
+        if (result != null) { Checkpoints = result; CheckpointsResolved = resolved; }
     }
 
 
@@ -630,10 +659,12 @@ public class Overlay
         if (s.ShowProgressBar) UpdateProgressBar();
         if (s.ShowBest) OverlayTextManager?.UpdateBest(this);
         ExtendedOverlay?.CheckPurePerfect();
-        ExtendedOverlay?.UpdateState();
+        // Death 先于 State：单人 State 的 Completed 分支依赖死亡计数；顺序反过来
+        // 会让状态在本次命中后仍使用上一格的缓存值。
         ExtendedOverlay?.UpdateDeath();
+        ExtendedOverlay?.UpdateState();
         ExtendedOverlay?.UpdateStart();
-        ExtendedOverlay?.UpdateColors();
+        // 颜色在布局/显示开关变化时统一刷新；进度格更新不需要重复写 TMP color。
     }
 
     public void UpdateProgressBar()
@@ -653,7 +684,7 @@ public class Overlay
         var s = Main.Settings;
         var labels = s.Labels;
         var order = s.AttemptLineOrder;
-        int attemptCount = PlayCount.GetData(LastHash)?.GetAttempts(StartProgress) ?? 0;
+        int attemptCount = PlayCount.GetData(LastHash)?.GetAttempts(StartProgress, LastMultiplier) ?? 0;
         int fullAttemptCount = PlayCount.GetData(LastHash)?.GetAttempts() ?? 0;
         bool showA = s.ShowAttempt;
         bool showF = s.ShowFullAttempt;
@@ -839,14 +870,19 @@ public class Overlay
         ExtendedOverlay.UpdateBPM();
     }
 
-    /// <summary>判定时间窗显示值（整毫秒）是否变化；变化时记录新值。按显示值比较，显示未变就不触发 TMP 重建。</summary>
-    internal bool TimingWindowChanged(in TimingWindowCalculator.Result tw)
+    /// <summary>判定时间窗显示值（整毫秒）或其可见性是否变化；变化时记录新值。
+    /// 仅比较整毫秒显示值，未变化时不触发 TMP 重建。</summary>
+    internal bool TimingWindowChanged(in TimingWindowCalculator.Result tw, bool valid)
     {
-        int x = tw.XPerfectValid ? (int)Math.Round(tw.XPerfectMs) : -1;
-        int p = (int)Math.Round(tw.PerfectMs), gr = (int)Math.Round(tw.GreatMs), gd = (int)Math.Round(tw.GoodMs);
-        if (p == _lastTwP && gr == _lastTwGr && gd == _lastTwGd && x == _lastTwX) return false;
+        int x = valid && tw.XPerfectValid ? (int)Math.Round(tw.XPerfectMs) : -1;
+        int p = valid ? (int)Math.Round(tw.PerfectMs) : -1;
+        int gr = valid ? (int)Math.Round(tw.GreatMs) : -1;
+        int gd = valid ? (int)Math.Round(tw.GoodMs) : -1;
+        bool changed = valid != _lastTwValid
+            || p != _lastTwP || gr != _lastTwGr || gd != _lastTwGd || x != _lastTwX;
+        _lastTwValid = valid;
         _lastTwP = p; _lastTwGr = gr; _lastTwGd = gd; _lastTwX = x;
-        return true;
+        return changed;
     }
 
     /// <summary>构造追加到 BPM 下方的判定时间窗行（每行一个判定）。</summary>
@@ -862,7 +898,15 @@ public class Overlay
         return _twSb.ToString();
     }
 
-    public void DirtyBpmCache() { LastTileBpm = LastCurBpm = -1; }
+    public void DirtyBpmCache()
+    {
+        LastTileBpm = LastCurBpm = -1;
+        // 判定时间窗和伪 BPM 状态也属于 BPM 文本的缓存的一部分；否则开关切换后
+        // 数值恰好不变时会命中早退，旧的时间窗行留在屏幕上（或新行无法出现）。
+        _lastTwP = _lastTwX = _lastTwGr = _lastTwGd = -1;
+        _lastTwValid = false;
+        ExtendedOverlay?.ResetBpmState();
+    }
 
     public static string BuildBpmText(int[] order, string hex, Settings s, double tileBpm, double curBpm, double kps, string kpsPrefix = "", string kpsSuffix = "")
     {
@@ -872,6 +916,7 @@ public class Overlay
         for (int i = 0; i < order.Length; i++)
         {
             int id = order[i];
+            if (id < 0 || id > 2) continue;
             if (vis == null || id >= vis.Length || !vis[id]) continue;
             if (_bpmSb.Length > 0) _bpmSb.Append('\n');
             switch (id)
@@ -895,10 +940,19 @@ public class Overlay
         var s = Main.Settings;
         _musicTimeLabel = $"<color=white>{s.Labels.MusicTime} |</color>";
         _mapTimeLabel = $"<color=white>{s.Labels.MapTime} |</color>";
+        ExtendedOverlay?.InvalidateTimeCaches();
     }
 
     private static scrShowIfDebug _autoText;
     private static Vector2? _autoTextOriginalPos;
+
+    /// <summary>在 Awake 补丁先移动原生 auto 文本前保存其真实位置，供关闭开关/切场景时还原。</summary>
+    internal static void CaptureAutoTextOriginal(scrShowIfDebug instance, Vector2 position)
+    {
+        if (instance == null) return;
+        _autoText = instance;
+        _autoTextOriginalPos ??= position;
+    }
 
     private static void RepositionAutoText(bool needRoom, float size = 1)
     {
@@ -978,6 +1032,18 @@ public class Overlay
     public void Show(int floor, bool suppressNativeUI = false)
     {
         var s = Main.Settings;
+        var hash = PlayCount.GetMapHash();
+        if (GameObject != null && GameObject.activeSelf
+            && _lastShownSeqID == floor
+            && _lastShownCheckpoints == GameRefs.CheckpointsUsed
+            && _lastShownPlayers == VersionSafe.GetPlayerCount()
+            && LastHash.Equals(hash))
+        {
+            // Main.Enable 的主动首显与随后到达的 scnGame.Play 是同一局的同一格，
+            // 不应再次 AddAttempts/重置统计；也不要把已经推进的 Progress 写回起点。
+            ApplyPositionOffsets();
+            return;
+        }
         ExtendedOverlay?.OnShow(floor);
         // 每次显示都同步自定义标签——覆盖层隐藏期间编辑的标签也能生效。
         // 扩展叠加层下与 OnShow 同条件：checkpoint 续命刻意保留备用标题，不能在此覆盖。
@@ -985,11 +1051,11 @@ public class Overlay
             ComboTitle.text = s.Labels.ComboTitle;
         if (_lastSavedStartProgress != -1 && _lastSavedFromStart)
         {
-            if (!AutoOnceEnabled) PlayCount.SetBest(LastHash, _lastSavedStartProgress, OverlayTextManager.GetProgress(), LastMultiplier);
+            if (!AutoOnceEnabled && OverlayTextManager != null)
+                PlayCount.SetBest(LastHash, _lastSavedStartProgress, OverlayTextManager.GetProgress(), LastMultiplier);
             _lastSavedStartProgress = -1;
         }
-        var hash = PlayCount.GetMapHash();
-        if (LastHash != hash) { LastHash = hash; Checkpoints = null; MapTimeCache = null; }
+        if (!LastHash.Equals(hash)) { LastHash = hash; Checkpoints = null; CheckpointsResolved = false; MapTimeCache = null; }
         MusicTimeCache = null;
         if (GameRefs.EditorInstance != null) { if (GameRefs.CheckpointsUsed == 0) NoCheckStartTile = floor; }
         else if (!GCS.practiceMode) NoCheckStartTile = 0;
@@ -1008,12 +1074,25 @@ public class Overlay
         GameObject.SetActive(true);
         if (_mono) _mono.enabled = true;
         SongPlaying = false; IsDeath = false;
-
+        // ShowCombo 单独开启时没有主栈，UpdateProgress 不会走；连击配色仍需
+        // 以本次判定的纯完美状态为基准，不能一直沿用 OnShow 的初始 true。
+        ExtendedOverlay?.CheckPurePerfect();
+        // 先给文本管理器一个起点，再做布局/状态刷新；只开 Start/State 时，
+        // SetupLocation 里的 UpdateStart 也能读到正确的起始百分比。
+        OverlayTextManager.SeedProgress(StartProgress);
+        if (s.LabelsDirty)
+        {
+            s.LabelsDirty = false;
+            RefreshAllTexts();
+        }
         // 任意可栈排元素开启即需要布局（原条件漏了 Accuracy/XAccuracy/MapTime，
         // 只开精度时栈不会被摆位——顺手修正；XScore/潜力值同样并入）
         if (s.AnyStackedTextVisible)
             SetupLocationMain();
-        OverlayTextManager.SeedProgress(StartProgress);
+        // 精度补丁通常会在 CalculatePercentAcc 的后缀里刷新，但补丁可能因版本/开关
+        // 探测失败而缺席；开局至少主动渲染一次，避免文本留空到下一击。
+        if (s.ShowAccuracy || s.ShowXAccuracy || (s.ShowXScore && HitMarginCompat.HasNativeXPerfect))
+            UpdateAccuracy();
         if (s.ShowProgress || s.ShowProgressBar || s.ShowBest)
         {
             if (s.ShowProgress) OverlayTextManager.UpdateProgress(this);
@@ -1024,30 +1103,34 @@ public class Overlay
         if (s.ShowCombo) UpdateCombo(0, false);
         if (s.ShowBPM) UpdateBPM();
         if (!suppressNativeUI && s.PatchBetaWatermark) AdjustBetaWatermark(s.Size);
-        if (s.PatchLevelName) ApplyLevelNamePatch();
+        if (!suppressNativeUI && s.PatchLevelName) ApplyLevelNamePatch();
         if (s.ShowTimingScale) UpdateTimingScale();
-        if (s.ShowAttempt) UpdateAttempts();
+        if (s.ShowAttempt || s.ShowFullAttempt) UpdateAttempts();
         ApplyPositionOffsets();
         ApplyAlignment();
         ApplyFontStyle();
         Features.GameLifecycleHelper.ComboCount = 0;
         if (!suppressNativeUI && s.RepositionAutoText) RepositionAutoText(s.AnyStackedTextVisible, s.Size);
+        _lastShownSeqID = floor;
+        _lastShownCheckpoints = GameRefs.CheckpointsUsed;
+        _lastShownPlayers = VersionSafe.GetPlayerCount();
         RefreshTimeLabels();
     }
 
     public void Death()
     {
         IsDeath = true;
-        if (AutoOnceEnabled || _lastSavedStartProgress == -1 || !_lastSavedFromStart) return;
-        PlayCount.SetBest(LastHash, _lastSavedStartProgress, OverlayTextManager.GetProgress(), LastMultiplier);
+        if (AutoOnceEnabled || _lastSavedStartProgress == -1 || !_lastSavedFromStart || OverlayTextManager == null) return;
+        float progress = OverlayTextManager.GetProgress();
+        PlayCount.SetBest(LastHash, _lastSavedStartProgress, progress, LastMultiplier);
         PlayCount.Save();
         _lastSavedStartProgress = -1;
-        OverlayTextManager.SetBest(OverlayTextManager.GetProgress());
+        OverlayTextManager.SetBest(progress);
     }
 
     public void Clear()
     {
-        if (AutoOnceEnabled || _lastSavedStartProgress == -1 || !_lastSavedFromStart) return;
+        if (AutoOnceEnabled || _lastSavedStartProgress == -1 || !_lastSavedFromStart || OverlayTextManager == null) return;
         PlayCount.SetBest(LastHash, _lastSavedStartProgress, 1, LastMultiplier);
         _lastSavedStartProgress = -1;
         OverlayTextManager.SetBest(1);
@@ -1056,35 +1139,56 @@ public class Overlay
     public void Hide()
     {
         ExtendedOverlay?.OnHide();
-        if (Main.Settings.PatchBetaWatermark) ResetBetaWatermark();
-        if (Main.Settings.RepositionAutoText) RepositionAutoText(false);
-        _autoText = null;
-        _autoTextOriginalPos = null;
+        // 即使设置刚被关闭也要还原：Harmony 补丁/场景卸载可能先于下一次 GUI 刷新发生。
+        ResetBetaWatermark();
+        ResetAutoTextPosition();
         ResetLevelName();
-        if (GameObject == null || !GameObject.activeSelf) return;
-        GameObject.SetActive(false);
-        if (_mono) _mono.enabled = false;
+        bool wasActive = GameObject != null && GameObject.activeSelf;
+        if (wasActive)
+        {
+            GameObject.SetActive(false);
+            if (_mono) _mono.enabled = false;
+        }
+        bool dataChanged = false;
         try
         {
-            if (!AutoOnceEnabled && _lastSavedStartProgress != -1 && _lastSavedFromStart)
+            if (OverlayTextManager != null)
             {
-                PlayCount.SetBest(LastHash, _lastSavedStartProgress, OverlayTextManager.GetProgress(), LastMultiplier);
-                _lastSavedStartProgress = -1;
+                float progress = OverlayTextManager.GetProgress();
+                if (!AutoOnceEnabled && _lastSavedStartProgress != -1 && _lastSavedFromStart)
+                {
+                    PlayCount.SetBest(LastHash, _lastSavedStartProgress, progress, LastMultiplier);
+                    _lastSavedStartProgress = -1;
+                    dataChanged = true;
+                }
+                if (StartProgress == progress && !AutoOnceEnabled
+                    && (PlayCount.GetData(LastHash)?.GetAttempts(StartProgress, LastMultiplier) ?? 0) > 0)
+                {
+                    PlayCount.RemoveAttempts(LastHash, StartProgress);
+                    dataChanged = true;
+                }
             }
-            if (StartProgress == OverlayTextManager.GetProgress() && !AutoOnceEnabled)
-                PlayCount.RemoveAttempts(LastHash, StartProgress);
         }
         catch (Exception e) { Loader.Warning($"Hide: {e.Message}"); }
-        PlayCount.Save();
+        // 已经隐藏且没有待结算记录时不必每次场景回调都写两份 Plays.dat；
+        // Main.Dispose 仍会在真正禁用时做最终保存。
+        if (wasActive || _lastSavedStartProgress != -1 || dataChanged) PlayCount.Save();
+        Checkpoints = null;
+        CheckpointsResolved = false;
         StartProgress = StartTile = NoCheckStartTile = -1;
         OverlayTextManager = null;
     }
 
     public void Destroy()
     {
-        ResetLevelName();
-        if (Main.Settings.PatchBetaWatermark) ResetBetaWatermark();
-        Object.Destroy(GameObject);
-        GC.SuppressFinalize(this);
+        // Disable/重建也必须走 Hide 的结算与原生 UI 还原路径；只 Destroy GameObject
+        // 会留下未结算的 attempt、已偏移的 Beta/auto 文本和 pending best。
+        try { Hide(); }
+        catch (Exception e) { Loader.Warning($"Overlay destroy cleanup failed: {e.Message}"); }
+        finally
+        {
+            if (GameObject != null) Object.Destroy(GameObject);
+            GC.SuppressFinalize(this);
+        }
     }
 }

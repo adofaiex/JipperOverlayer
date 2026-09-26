@@ -38,9 +38,13 @@ public static class FontManager
             foreach (var e in FontList)
                 if (e.sourceFontName == f.name) { exists = true; break; }
             if (exists) continue;
-            var tmpFont = TMP_FontAsset.CreateFontAsset(f);
-            if (tmpFont != null)
-                FontList.Add(new FontEntry { name = f.name, font = tmpFont, sourceFontName = f.name });
+            try
+            {
+                var tmpFont = TMP_FontAsset.CreateFontAsset(f);
+                if (tmpFont != null)
+                    FontList.Add(new FontEntry { name = f.name, font = tmpFont, sourceFontName = f.name });
+            }
+            catch (Exception e) { Loader.Warning($"FontManager: Skip game font '{f.name}': {e.Message}"); }
         }
 
         // 3. Custom fonts from CustomFonts directory
