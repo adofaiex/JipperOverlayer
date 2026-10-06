@@ -86,6 +86,9 @@ public static class Main
                 }
                 else
                     _overlay.Show(GameRefs.CurrentSeqID);
+                // 标记为主动首显：随后游戏若对同一格补发 scnGame.Play，只去重这一次，
+                // 不会把新一局（死亡/手动重试）的 Show 吞掉。
+                _overlay.MarkShownByEnable();
             }
 
             SceneManager.sceneUnloaded += OnSceneUnloaded;
@@ -172,6 +175,7 @@ public static class Main
         {
             _overlay.Show(GameRefs.CurrentSeqID);
         }
+        _overlay.MarkShownByEnable();
     }
 
     private static void OnSceneUnloaded(Scene _)

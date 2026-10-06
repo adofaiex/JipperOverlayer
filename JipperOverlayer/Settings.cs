@@ -59,6 +59,10 @@ public class Settings
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
     public bool RemoveNotRequireInAuto = true, CheckPseudo = true, AllowELCombo = true, AllowOrangeCombo = true;
     public bool ComboTitleAltOnNonPerfect = false;
+    /// <summary>结算界面「完美」明细：仅在判定文本前把版式预设临时压成 Default，让游戏原生
+    /// 输出「稍快 / 完美 / 稍慢」三列同一行，随后还原，并把 [+X/-] 三分量括号追加到中间那一列。
+    /// 仅 r149+（原生 XPerfect）可用，默认关闭以免改变既有结算观感。</summary>
+    public bool ShowResultsPerfectDetail = false;
     public bool PatchBetaWatermark = true, PatchLevelName = true, RepositionAutoText = true;
     public Language CurrentLanguage;
     public int FontIndex;
@@ -455,6 +459,9 @@ public class Settings
             // r150 基础游戏原生支持 XPerfect，r148 依赖外部 XPerfect mod——两种来源都允许显示开关
             if (HitMarginCompat.XPerfectDisplayAvailable && ShowJudgement) ShowXPerfectInJudgement = Tog(Tr.Get(Tr.Key.ShowXPerfectInJudgement), ShowXPerfectInJudgement);
             if (HitMarginCompat.XPerfectDisplayAvailable && ShowJudgement && ShowXPerfectInJudgement) ShowAutoInXPerfect = Tog(Tr.Get(Tr.Key.ShowAutoInXPerfect), ShowAutoInXPerfect);
+            // 结算界面「完美」明细：三分量只有 r149+ 才有；r148 上不显示该开关
+            if (HitMarginCompat.HasNativeXPerfect)
+                ShowResultsPerfectDetail = Tog(Tr.Get(Tr.Key.ShowResultsPerfectDetail), ShowResultsPerfectDetail);
             ShowTimingScale = Tog(Tr.Get(Tr.Key.ShowTimingScale), ShowTimingScale);
             ShowAttempt = Tog(Tr.Get(Tr.Key.ShowAttempt), ShowAttempt);
             ShowFullAttempt = Tog(Tr.Get(Tr.Key.ShowFullAttempt), ShowFullAttempt);

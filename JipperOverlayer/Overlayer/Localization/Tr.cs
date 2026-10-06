@@ -54,6 +54,7 @@ public static class Tr
         TmHit, TmAvg, TmBoth, TmBothOne,
         HelpPotential, HelpXScore, HelpTimingMode,
         Diagnostics, RescanFonts, CopyDiagnostics, DiagnosticsCopied,
+        ShowResultsPerfectDetail,
         Count
     }
 
@@ -106,7 +107,8 @@ public static class Tr
             "Potential = the final value if every remaining tile gets the top judgement. In coop, both values merge into one line.",
             "Each judged tile: XPerfect = 2 pts, Perfect+/- = 1 pt (game r149+ only).",
             "Hit offset = the latest hit's ms offset; Average = the mean of all hits.",
-             "Diagnostics", "Rescan Fonts", "Copy Diagnostics", "Diagnostics copied" ],
+             "Diagnostics", "Rescan Fonts", "Copy Diagnostics", "Diagnostics copied",
+             "Show Perfect Breakdown on Results" ],
 
         /* 1  Korean */ [ "크기", "진행도 표시", "정확도 표시", "X정확도 표시",
             "음악 시간 표시", "맵 시간 표시", "음악 없을 때 맵 시간",
@@ -155,7 +157,8 @@ public static class Tr
             "잠재값 = 남은 칸을 모두 최고 판정으로 맞췄을 때의 최종 값. 협동에서는 두 값이 한 줄로 병합됩니다.",
             "판정 칸당 XPerfect = 2점, Perfect+/- = 1점 (게임 r149+ 전용).",
             "타격 오프셋 = 직전 타격의 ms 오프셋, 평균 = 전체 타격의 평균.",
-             "진단", "글꼴 다시 검색", "진단 정보 복사", "진단 정보를 복사했습니다" ],
+             "진단", "글꼴 다시 검색", "진단 정보 복사", "진단 정보를 복사했습니다",
+             "결과 화면에 퍼펙트 세부 표시" ],
 
         /* 2  Chinese */ [ "大小", "显示进度", "显示准确率", "显示X准确率",
             "显示音乐时间", "显示地图时间", "无音乐时显示地图时间",
@@ -204,7 +207,8 @@ public static class Tr
             "潜力值 = 剩余格全部最高判定时的最终值；合作模式中两个值合并为一行显示",
             "每判定格 XPerfect=2 分、Perfect+/-=1 分（仅游戏 r149+）",
             "单次偏移 = 最近一次打击的毫秒偏移；平均值 = 全部打击的平均偏移",
-             "诊断", "重新扫描字体", "复制诊断信息", "诊断信息已复制" ],
+             "诊断", "重新扫描字体", "复制诊断信息", "诊断信息已复制",
+             "结算界面显示完美明细" ],
     ];
 
     public static string Get(Key key)

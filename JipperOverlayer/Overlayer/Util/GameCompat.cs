@@ -9,7 +9,8 @@ namespace JipperOverlayer.Overlayer.Util;
 /// <summary>
 /// 判定枚举的跨版本兼容层。
 ///
-/// 编译基线固定为 r148（Libs/Assembly-CSharp.dll），因此代码里不能出现 r150 才有的符号；
+/// 编译基线是 Libs/Assembly-CSharp.dll（当前为 r150 级程序集，含 XPerfect），但代码必须同时
+/// 兼容 r148 与 r150，因此不能出现任一侧独有的符号；
 /// 所有判定下标在运行时按“名字”解析，使同一个构建产物既能跑 r148 也能跑 r150。
 ///
 /// r148: HitMargin 共 12 值，中心判定是唯一的 Perfect(3)

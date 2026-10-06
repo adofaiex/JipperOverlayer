@@ -112,6 +112,24 @@ class Program
             ("scrMisc","GetHitMarginInSec",new[]{ "difficulty","timeDiff","floorBpm","conductorPitch","marginScale" }),
         });
 
+        Console.WriteLine("\n=== Results perfect-detail patch (ResultsPerfectDetailPatch) ===");
+        // Harmony 按参数名注入，方法名/参数名任一改名都会让补丁静默失效；两个基线都必须通过
+        MS("DetailedResults", "GenerateResults", "marginTracker");
+        CM("scrMarginTracker", "hitMarginsCount");
+        // 补丁不删列：调用前把 Persistence.hitMarginPerfectText 临时压成 Default(=0)，让游戏原生输出
+        // 「稍快 / 完美 / 稍慢」三列同行，事后还原，再把 [+X/-] 括号贴到中间那一列。
+        // 压制走 Persistence.generalPrefs（PlayerPrefsJson）的 GetInt/SetInt —— 全程按名反射键值，
+        // 不引用 HitMarginPerfectTextPreset（该枚举 r148 不存在，直接引用会 TypeLoadException）。
+        CM("Persistence", "generalPrefs");
+        MS("PlayerPrefsJson", "GetInt", "key", "defaultValue");
+        MS("PlayerPrefsJson", "SetInt", "key", "value");
+        // 版式键与枚举只在 r150+ 存在；r148 无此键（生成结果天生三列同行），补丁整段早退。
+        if (IsR150)
+        {
+            CM("Persistence", "hitMarginPerfectText");
+            CT("HitMarginPerfectTextPreset");
+        }
+
         Console.WriteLine("\n=== v136 legacy patch targets (registered only on v136 games) ===");
         OPT("scrController","Hit");
         OPT("scrMistakesManager","AddHit");

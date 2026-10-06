@@ -10,6 +10,7 @@
 - **MelonLoader settings UX**: the settings window stays reachable when `ModEnabled` is off, and both Save/Close paths persist edits
 - **API verification hardening**: explicit `Libs` paths must contain `Assembly-CSharp.dll` (invalid paths now fail with exit code 2), and r150-only XScore/colour members are checked
 - Failed enablement now backs off before retrying; checkpoint discovery distinguishes “not ready” from “no checkpoints”, and legacy display order is migrated only when the new field is absent
+- **Results perfect breakdown**: before the results line is built the layout preset is temporarily forced to `Default`, so the game itself prints `稍快 / 完美 / 稍慢` as three columns on one line, and a compact `[+ / X / -]` breakdown is then appended to the center column (Auto folded into the X slot, same convention as the game's own `ResultWithAuto`); the preset is restored afterwards even if the original method throws; r149+ only, off by default, and inert on r148
 
 ### Performance
 
@@ -23,6 +24,8 @@
 - Checkpoint retries clear timing samples, show the current floor on re-enable, and settle pending attempt/best state before the overlay is destroyed
 - Timing-window visibility, AvgTiming layout, Full-Attempt-only startup, cross-map XScore caching, and state/death refresh order are corrected
 - Legacy display-order arrays, out-of-range numeric settings, invalid color stops and malformed play data are normalized defensively
+- Death no longer freezes the music time as “played to the end”: an audio reset caused by death/retry is distinguished from a natural song end, and the last valid time stays until retry
+- The advanced combo title returns to `Perfect` after a death/checkpoint retry; the deduplicated first-show path now applies only to the enable-time Show and never swallows a new run
 
 ## v1.1.6 — 2026.09.19
 

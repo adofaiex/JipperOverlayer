@@ -58,6 +58,12 @@ internal static class GameLifecyclePatches
             PatchManager.RegisterPatches(() => true, "r141-r148",
                 typeof(ScrMiscGetHitMarginPatch));
 
+        // 结算界面的「完美」三分量明细：按开关挂载，是否真正生效由补丁内的 HasNativeXPerfect
+        // （原生 XPerfect/PerfectMinus/PerfectPlus）再判定。r148 上即使配置里留着 true，
+        // Prefix/Postfix 也会直接早退（不碰版式预设），不改动结算显示。
+        PatchManager.RegisterPatches(() => Main.Settings.ShowResultsPerfectDetail,
+            typeof(ResultsPerfectDetailPatch));
+
         // Always capture beta watermark reference when it awakens
         PatchManager.RegisterPatches(() => true, typeof(BetaWatermarkCapturePatch));
     }

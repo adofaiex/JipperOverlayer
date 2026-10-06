@@ -59,6 +59,9 @@ public class Overlay
     private int _lastShownSeqID = -1;
     private int _lastShownCheckpoints = -1;
     private int _lastShownPlayers = -1;
+    // 只有「手动/启用时的主动 Show」（Main.Enable、RecreateOverlay）才允许被后续
+    // 同格 scnGame.Play 去重；游戏自己触发的 Show 永远是新的一局，不能吞掉。
+    private bool _shownByEnable;
     public int[] Checkpoints;
     internal bool CheckpointsResolved;
     internal float LastTileBpm = -1;
@@ -1029,11 +1032,17 @@ public class Overlay
         UpdateAttempts();
     }
 
+    /// <summary>标记本次 Show 来自主动启用/重建，允许紧随其后的同格 scnGame.Play 被去重。</summary>
+    internal void MarkShownByEnable() => _shownByEnable = true;
+
     public void Show(int floor, bool suppressNativeUI = false)
     {
         var s = Main.Settings;
         var hash = PlayCount.GetMapHash();
-        if (GameObject != null && GameObject.activeSelf
+        // 去重只针对「局内启用的主动首显紧跟同一格 scnGame.Play」这一正常路径；
+        // 死亡重试（IsDeath）必须完整走 Show，否则 IsDeath/SongPlaying/ComboTitle
+        // 状态不复位：时间会冻结在误判的“播放完毕”，备用连击标题也回不到 Perfect。
+        if (GameObject != null && GameObject.activeSelf && !IsDeath && _shownByEnable
             && _lastShownSeqID == floor
             && _lastShownCheckpoints == GameRefs.CheckpointsUsed
             && _lastShownPlayers == VersionSafe.GetPlayerCount()
@@ -1041,13 +1050,16 @@ public class Overlay
         {
             // Main.Enable 的主动首显与随后到达的 scnGame.Play 是同一局的同一格，
             // 不应再次 AddAttempts/重置统计；也不要把已经推进的 Progress 写回起点。
+            _shownByEnable = false;
             ApplyPositionOffsets();
             return;
         }
+        _shownByEnable = false;
         ExtendedOverlay?.OnShow(floor);
         // 每次显示都同步自定义标签——覆盖层隐藏期间编辑的标签也能生效。
-        // 扩展叠加层下与 OnShow 同条件：checkpoint 续命刻意保留备用标题，不能在此覆盖。
-        if (ComboTitle && (ExtendedOverlay == null || GameRefs.CheckpointsUsed == 0))
+        // OnShow 已把 _perToCom 复位（备用标题状态归零），文本必须同步复位，
+        // 否则死亡/checkpoint 重试后标题停留在 Combo 而状态已是 Perfect。
+        if (ComboTitle)
             ComboTitle.text = s.Labels.ComboTitle;
         if (_lastSavedStartProgress != -1 && _lastSavedFromStart)
         {

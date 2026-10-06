@@ -28,6 +28,8 @@ public class ExtendedOverlayModule
     private int _lastMusicTimeTick = -1;
     private int _lastMapTimeTick = -1;
     private float _lastMapTotalTime = -1f;
+    private float _lastMusicTimeSeen = -1f;
+    private bool _musicStopped;
     private float _lastTiming;
     public int DecimalPrecision = 2;
 
@@ -298,6 +300,8 @@ public class ExtendedOverlayModule
         _lastMusicTimeTick = -1;
         _lastMapTimeTick = -1;
         _lastMapTotalTime = -1f;
+        _lastMusicTimeSeen = -1f;
+        _musicStopped = false;
     }
 
     internal void DirtyTextCaches()
@@ -348,22 +352,37 @@ public class ExtendedOverlayModule
                 // 这里不能用 return：地图时间可能与音乐时间不同步，且 ShowMapTime
                 // 还会在下面独立更新；提前返回会让它最多等到下一次音乐时间 tick。
                 int curTick = (int)(time * 10);
-                if (_lastMusicTimeTick != curTick)
+                if (!_musicStopped && _lastMusicTimeTick != curTick)
                 {
                     _lastMusicTimeTick = curTick;
 
                     bool hourNeed = totalTime >= 3600;
                     _overlay.MusicTimeCache ??= FmtTime(totalTime, hourNeed);
 
+                    bool suppressWrite = false;
                     if (time > 0) _overlay.SongPlaying = true;
-                    else if (time == 0 && _overlay.SongPlaying) time = totalTime;
+                    else if (_overlay.SongPlaying)
+                    {
+                        // 只有「上一时刻接近末尾 → 归零」才是播放完毕；
+                        // 死亡/重开时音频被游戏归零属于从中间跳变，
+                        // 不能显示成“播放完毕”，也不能改写为 0:00。
+                        bool naturalEnd = totalTime > 0 && _lastMusicTimeSeen >= 0f
+                            && _lastMusicTimeSeen >= totalTime - 0.5f;
+                        _musicStopped = true;
+                        if (naturalEnd) time = totalTime;
+                        else suppressWrite = true;
+                    }
+                    _lastMusicTimeSeen = time;
 
-                    string timeStr = time == 0 && _overlay.SongPlaying
-                        ? _overlay.MusicTimeCache
-                        : FmtTime(time, hourNeed);
+                    if (!suppressWrite)
+                    {
+                        string timeStr = time == totalTime
+                            ? _overlay.MusicTimeCache
+                            : FmtTime(time, hourNeed);
 
-                    _overlay.TimeText.text = $"{_overlay._musicTimeLabel} {timeStr}~{_overlay.MusicTimeCache}";
-                    _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
+                        _overlay.TimeText.text = $"{_overlay._musicTimeLabel} {timeStr}~{_overlay.MusicTimeCache}";
+                        _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
+                    }
                 }
             }
         }
@@ -454,9 +473,7 @@ public class ExtendedOverlayModule
         _timings = null;
         _timingsSum = 0;
         _lastTiming = 0;
-        _lastMusicTimeTick = -1;
-        _lastMapTimeTick = -1;
-        _lastMapTotalTime = -1f;
+        InvalidateTimeCaches();
         _authorSource = null;
         _authorProperty = null;
         if (GameRefs.CheckpointsUsed == 0) _overlay.ComboTitle.text = Main.Settings.Labels.ComboTitle;
