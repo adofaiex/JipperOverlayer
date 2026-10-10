@@ -2,7 +2,7 @@
   "Id": "JipperOverlayer",
   "DisplayName": "Jipper Overlayer",
   "Author": "HitMargin",
-  "Version": "1.1.6",
+  "Version": "1.1.7",
   "Requirements": [],
   "AssemblyName": "JipperOverlayer.Loader.UMM.dll",
   "EntryMethod": "JipperOverlayer.Loader.UmmEntry.Load",

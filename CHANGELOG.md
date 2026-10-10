@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v1.1.7 — 2026.10.10
+
 ### Features
 
 - **Diagnostics panel**: settings can show the detected game API, loader, XPerfect source, font inventory and overlay state, and copy the report to the clipboard
