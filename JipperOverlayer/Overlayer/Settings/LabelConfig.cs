@@ -35,6 +35,8 @@ public class LabelConfig
     public string Death = "Death";
     public string Start = "Start";
     public string Timing = "Timing";
+    /// <summary>判定条旁的本次敲击误差标签（issue #6）。</summary>
+    public string HitOffset = "Hit Offset";
 
     // State text (ExtendedOverlay)
     public string StateWaiting = "Waiting";
@@ -108,6 +110,7 @@ public class LabelConfig
         Death = "사망",
         Start = "시작",
         Timing = "타이밍",
+        HitOffset = "타격 오차",
         StateWaiting = "대기",
         StateAutoTile = "자동 플레이 타일",
         StateAuto = "자동 플레이",
@@ -147,6 +150,7 @@ public class LabelConfig
         Death = "死亡",
         Start = "开始",
         Timing = "时机",
+        HitOffset = "打击误差",
         StateWaiting = "等待",
         StateAutoTile = "自动方块",
         StateAuto = "自动播放",

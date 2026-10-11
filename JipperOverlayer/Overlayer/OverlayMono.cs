@@ -17,7 +17,10 @@ public class OverlayMono : MonoBehaviour
         if (Overlay.TimeDisplayNeeded) Overlay.UpdateTime();
         if (Overlay.Canvas)
         {
-            bool desired = !GameRefs.IsPaused;
+            // 布局编辑器开着时需要看见并拖拽元素，暂停也不能关 Canvas。
+            // 这里是 Canvas 可见性的唯一裁决点：编辑器只声明意图，不直接改
+            // Canvas.enabled，否则两边各写一次会来回打架（暂停下拖拽黑屏）。
+            bool desired = !GameRefs.IsPaused || OverlayDragEditor.IsEditing;
             if (!_canvasStateInitialized || desired != _canvasEnabledState)
             {
                 Overlay.Canvas.enabled = desired;

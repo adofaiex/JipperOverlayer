@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v1.1.7.1 — 2026.10.11
+
+### Features
+
+- **Hit offset next to the judgement line**: shows the latest hit's millisecond offset right above the judgement line, so the reading is visible in peripheral vision at the moment of the hit; independent of the existing `Timing` stack line (its own toggle, colour gradient, decimal places and custom-position offset), and it shares the same sample path so it works with `Timing` on or off (issue #6)
+- **Layout editor (FreeMake-style)**: a drag-to-place editor for every custom-position element, following the interaction paradigm popularized by community key-viewer editors — click to select and drag on the real screen, a drag threshold so a click never nudges an element, alignment snapping to other elements and the screen edges/centers with guide lines (Alt temporarily disables snapping), arrow-key nudging (Shift = 10px), Ctrl+Z undo, and immediate persistence. Every coordinate is also a directly editable number field, so a value can be typed exactly (values clamp to the same range as the sliders; typing is buffered so intermediate states like `-` or `1.` survive, applies live without writing to disk on every keystroke, and persists when the field loses focus). It writes the existing per-element offset fields and the element layout still comes from the same code path, so nothing about rendering changes; the editor itself is an original IMGUI implementation
+
 ## v1.1.7 — 2026.10.10
 
 ### Features

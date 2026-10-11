@@ -55,6 +55,10 @@ public static class Tr
         HelpPotential, HelpXScore, HelpTimingMode,
         Diagnostics, RescanFonts, CopyDiagnostics, DiagnosticsCopied,
         ShowResultsPerfectDetail,
+        ShowHitOffset, HitOffsetColor, PosHitOffset, HelpHitOffset,
+        OpenLayoutEditor,
+        LayoutEditorTitle, LayoutEditorHint, LayoutEditorSnap, LayoutEditorNotPlaying,
+        LayoutEditorExit, LayoutEditorHidden, LayoutEditorUndo, LayoutEditorResetAll, LayoutEditorSave,
         Count
     }
 
@@ -108,7 +112,13 @@ public static class Tr
             "Each judged tile: XPerfect = 2 pts, Perfect+/- = 1 pt (game r149+ only).",
             "Hit offset = the latest hit's ms offset; Average = the mean of all hits.",
              "Diagnostics", "Rescan Fonts", "Copy Diagnostics", "Diagnostics copied",
-             "Show Perfect Breakdown on Results" ],
+             "Show Perfect Breakdown on Results",
+             "Show Hit Offset", "Hit Offset Color", "Hit Offset",
+             "Hit offset = the latest hit's ms offset, shown next to the judgement line.",
+             "Open Layout Editor",
+             "Layout Editor", "Click an element to select it, then drag to move. Alt = no snapping, Shift+Arrow = 10px.",
+             "Snap to edges / centers", "Enter a level first to edit the layout.",
+             "Exit editor", "(hidden)", "Undo", "Reset all", "Save" ],
 
         /* 1  Korean */ [ "크기", "진행도 표시", "정확도 표시", "X정확도 표시",
             "음악 시간 표시", "맵 시간 표시", "음악 없을 때 맵 시간",
@@ -158,7 +168,13 @@ public static class Tr
             "판정 칸당 XPerfect = 2점, Perfect+/- = 1점 (게임 r149+ 전용).",
             "타격 오프셋 = 직전 타격의 ms 오프셋, 평균 = 전체 타격의 평균.",
              "진단", "글꼴 다시 검색", "진단 정보 복사", "진단 정보를 복사했습니다",
-             "결과 화면에 퍼펙트 세부 표시" ],
+             "결과 화면에 퍼펙트 세부 표시",
+             "타격 오차 표시", "타격 오차 색상", "타격 오차",
+             "타격 오차 = 직전 타격의 ms 오차. 판정선 옆에 표시됩니다.",
+             "레이아웃 편집기 열기",
+             "레이아웃 편집기", "요소를 클릭해 선택하고 드래그해 이동. Alt = 스냅 해제, Shift+화살표 = 10px.",
+             "가장자리/중앙에 스냅", "레이아웃을 편집하려면 먼저 레벨에 진입하세요.",
+             "편집기 닫기", "(숨김)", "실행 취소", "전체 초기화", "저장" ],
 
         /* 2  Chinese */ [ "大小", "显示进度", "显示准确率", "显示X准确率",
             "显示音乐时间", "显示地图时间", "无音乐时显示地图时间",
@@ -208,7 +224,13 @@ public static class Tr
             "每判定格 XPerfect=2 分、Perfect+/-=1 分（仅游戏 r149+）",
             "单次偏移 = 最近一次打击的毫秒偏移；平均值 = 全部打击的平均偏移",
              "诊断", "重新扫描字体", "复制诊断信息", "诊断信息已复制",
-             "结算界面显示完美明细" ],
+             "结算界面显示完美明细",
+             "显示打击误差", "打击误差颜色", "打击误差",
+             "打击误差 = 最近一次打击的毫秒偏差，显示在判定条旁",
+             "打开布局编辑器",
+             "布局编辑器", "点击元素选中，拖动即可移动。Alt = 关闭吸附，Shift+方向键 = 10px。",
+             "吸附到边缘/中心", "请先进入关卡再编辑布局。",
+             "退出编辑器", "（隐藏）", "撤销", "全部重置", "保存" ],
     ];
 
     public static string Get(Key key)

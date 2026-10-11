@@ -26,6 +26,8 @@ public class ColorConfig
     public ColorPerDictionary JCombo = new([(0f, Color.red), (0.2f, new Color(0.9882f, 1, 0.302f)), (1f, new Color(0.3725f, 1, 0.3119f))]);
     public ColorPerDictionary JDeath = new([(0f, Color.red), (1f, Color.green)]);
     public ColorPerDictionary JTiming = new([(0f, Color.red), (1f, Color.green)]);
+    /// <summary>判定条旁「本次敲击误差」文本的渐变（issue #6）。与 JTiming 分开，便于单独调色。</summary>
+    public ColorPerDictionary JHitOffset = new([(0f, Color.red), (1f, Color.green)]);
 
     // Extended overlay colors — single
     public ColorCache JStateWaiting = new(Color.white);
@@ -53,7 +55,7 @@ public class ColorConfig
         MusicTime.EnsureSorted(); MapTime.EnsureSorted(); Best.EnsureSorted(); XScore.EnsureSorted();
         Bpm.EnsureSorted(); Combo.EnsureSorted(); ProgressBar.EnsureSorted();
         ProgressBarBackground.EnsureSorted(); ProgressBarBorder.EnsureSorted();
-        JCombo.EnsureSorted(); JDeath.EnsureSorted(); JTiming.EnsureSorted();
+        JCombo.EnsureSorted(); JDeath.EnsureSorted(); JTiming.EnsureSorted(); JHitOffset.EnsureSorted();
     }
     public Color GetAccuracyColor(float t, bool perfect) { return perfect ? new Color(1, 0.8549f, 0) : Accuracy.GetColor(t); }
     public Color GetXAccuracyColor(float t, bool perfect) { return perfect ? new Color(1, 0.8549f, 0) : XAccuracy.GetColor(t); }
@@ -89,6 +91,7 @@ public class ColorConfig
         if (JFps == null) JFps = new(Color.white);
         if (JAuthor == null) JAuthor = new(Color.white);
         if (JStart == null) JStart = new(Color.white);
+        if (JHitOffset == null) JHitOffset = new([(0f, Color.red), (1f, Color.green)]);
         JStateWaiting.Sanitize(); JStateAutoTile.Sanitize(); JStateAuto.Sanitize();
         JStatePerfectPlay.Sanitize(); JStateComplete.Sanitize(); JStateClear.Sanitize();
         JStateNoMiss.Sanitize(); JStatePerfectionist.Sanitize(); JFps.Sanitize();

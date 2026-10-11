@@ -234,7 +234,8 @@ public class ExtendedOverlayModule
     public void UpdateTiming(float timing)
     {
         var s = Main.Settings;
-        if (!s.ShowTiming || !_overlay.GameObject.activeSelf) return;
+        // 判定条旁的 HitOffset 与主栈 Timing 共用这个采样入口，任一开启都要继续。
+        if ((!s.ShowTiming && !s.ShowHitOffset) || !_overlay.GameObject.activeSelf) return;
         // 自动打击过滤：自动播放/自动地板的命中使用理想时间戳
         // （≈0ms 假样本），混入统计会把平均值拉向 0
         if (GameRefs.IsAuto) return;
@@ -250,10 +251,23 @@ public class ExtendedOverlayModule
         _timingsSum += timing;
         _lastTiming = timing;
         RenderTiming(timing);
+        RenderHitOffset(timing);
+    }
+
+    /// <summary>判定条旁的本次敲击误差（issue #6）。与主栈 Timing 行共用同一个采样点，
+    /// 但独立定位、独立开关——关掉 ShowTiming 也不影响它，反之亦然。</summary>
+    private void RenderHitOffset(float timing)
+    {
+        var s = Main.Settings;
+        if (!s.ShowHitOffset || !_overlay.HitOffsetText) return;
+        int dp = s.HitOffsetDecimal;
+        _overlay.HitOffsetText.text = $"<color=white>{s.Labels.HitOffset} -</color> {Math.Round(timing, dp)}";
+        _overlay.HitOffsetText.color = s.Colors.JHitOffset.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
     }
 
     private void RenderTiming(float timing)
     {
+        if (!Main.Settings.ShowTiming) return;
         int dp = Main.Settings.TimingDecimal;
         float average = _timings == null || _timings.Count == 0 ? 0 : (float)(_timingsSum / _timings.Count);
         var labels = Main.Settings.Labels;
@@ -293,6 +307,14 @@ public class ExtendedOverlayModule
         if (!Main.Settings.ShowTiming || !_overlay.GameObject.activeSelf) return;
         if (_timings == null || _timings.Count == 0 || !TimingText) return;
         RenderTiming(_lastTiming);
+    }
+
+    /// <summary>标签/颜色编辑后重绘判定条旁的误差文本（不追加新样本）。</summary>
+    internal void RefreshHitOffset()
+    {
+        if (!Main.Settings.ShowHitOffset || !_overlay.GameObject.activeSelf) return;
+        if (_timings == null || _timings.Count == 0 || !_overlay.HitOffsetText) return;
+        RenderHitOffset(_lastTiming);
     }
 
     internal void InvalidateTimeCaches()

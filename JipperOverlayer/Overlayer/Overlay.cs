@@ -28,6 +28,9 @@ public class Overlay
     public TextMeshProUGUI CheckpointText;
     public TextMeshProUGUI AttemptText;
     public TextMeshProUGUI BestText;
+    /// <summary>判定条旁的本次敲击误差文本（issue #6）。独立于主栈，由 ExtendedOverlayModule
+    /// 在 UpdateTiming 里同步刷新，避免与左上角的主栈 Timing 行重复占用栈位。</summary>
+    public TextMeshProUGUI HitOffsetText;
     public RectTransform ComboTransform;
     public TextMeshProUGUI ComboTitle;
     public TextMeshProUGUI ComboText;
@@ -48,6 +51,7 @@ public class Overlay
     private GameObject _timingScaleObject;
     private GameObject _attemptObject;
     private GameObject _progressBarObject;
+    private GameObject _hitOffsetObject;
     internal static scrEnableIfBeta BetaWatermark;
     internal static Vector2? BetaWatermarkOriginalPos;
     internal int LastTime = -1;
@@ -115,6 +119,7 @@ public class Overlay
         InitializeProgressBar();
         InitializeTimingScale();
         InitializeAttempt();
+        InitializeHitOffset();
         ExtendedOverlay?.InitializeExtraTexts();
         OnChangePlayers();
         UpdateSize();
@@ -324,6 +329,34 @@ public class Overlay
         _attemptObject = go;
     }
 
+    /// <summary>判定条旁的本次敲击误差文本（issue #6）。刻意不挂进主容器：
+    /// 主栈在左上角，而玩家需要的是打击瞬间贴在判定条的读数。</summary>
+    protected void InitializeHitOffset()
+    {
+        var go = new GameObject("HitOffset");
+        var t = go.AddComponent<RectTransform>();
+        t.SetParent(Canvas.transform);
+        t.anchorMin = t.anchorMax = t.pivot = new Vector2(0.5f, 0);
+        t.sizeDelta = new Vector2(300, 30);
+        HitOffsetText = go.AddComponent<TextMeshProUGUI>();
+        HitOffsetText.font = AssetLoader.FontAsset;
+        HitOffsetText.fontSize = Main.Settings?.MainFontSize ?? 25;
+        HitOffsetText.alignment = TextAlignmentOptions.Center;
+        ShadowManager.ApplyShadow(HitOffsetText);
+        _hitOffsetObject = go;
+        UpdateHitOffsetPosition();
+        go.SetActive(false);
+    }
+
+    /// <summary>贴判定条摆放：默认放在判定条正上方（judge 的 anchor 在屏幕底边，
+    /// 放下方会推出屏幕外）；要放下方用自定义位置偏移的 Y 负值即可。</summary>
+    internal void UpdateHitOffsetPosition()
+    {
+        if (!_hitOffsetObject) return;
+        float judgeY = Main.Settings != null && Main.Settings.JudgementLocationUp ? 85f : 5f;
+        _hitOffsetObject.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, judgeY + 30f);
+    }
+
     internal static float? _originalLevelNameSizeX;
     internal static Vector2? _originalLevelNamePos;
     internal static Vector3? _originalLevelNameScale;
@@ -430,7 +463,7 @@ public class Overlay
         foreach (var t in ExtraTexts)
             if (t) t.font = mainFont;
         foreach (var t in new[] { ProgressText, AccuracyText, XAccuracyText, TimeText, MapTimeText, CheckpointText, BestText,
-            BPMText, TimingScaleText, AttemptText })
+            BPMText, TimingScaleText, AttemptText, HitOffsetText })
         { if (t) ShadowManager.ApplyShadow(t); }
         foreach (var jt in JudgementTexts)
         { if (jt) ShadowManager.ApplyShadow(jt); }
@@ -458,6 +491,7 @@ public class Overlay
         if (ComboText) ComboText.fontSize = s.ComboValFontSize;
         if (TimingScaleText) TimingScaleText.fontSize = s.TimingFontSize;
         if (AttemptText) AttemptText.fontSize = s.AttemptFontSize;
+        if (HitOffsetText) HitOffsetText.fontSize = s.MainFontSize;
         foreach (var t in ExtraTexts)
             if (t) t.fontSize = mainSize;
     }
@@ -502,6 +536,7 @@ public class Overlay
         if (ComboText) ComboText.fontStyle = (FontStyles)s.ComboValStyle;
         if (TimingScaleText) TimingScaleText.fontStyle = (FontStyles)s.TimingStyle;
         if (AttemptText) AttemptText.fontStyle = (FontStyles)s.AttemptStyle;
+        if (HitOffsetText) HitOffsetText.fontStyle = mainStyle;
         foreach (var t in ExtraTexts)
             if (t) t.fontStyle = mainStyle;
     }
@@ -529,6 +564,7 @@ public class Overlay
             TimingScaleText.rectTransform.anchoredPosition = new Vector2(0, 90 + 40 * s.Size);
         if (_attemptObject)
             _attemptObject.GetComponent<RectTransform>().anchoredPosition = new Vector2(VersionSafe.IsCoopMode() && VersionSafe.GetPlayerCount() > 1 ? 550 : 310, 35);
+        UpdateHitOffsetPosition();
         if (_progressBarObject)
             _progressBarObject.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -10);
 
@@ -561,6 +597,177 @@ public class Overlay
         }
         if (_progressBarObject)
             _progressBarObject.GetComponent<RectTransform>().anchoredPosition += new Vector2(o.ProgBarOffsetX, o.ProgBarOffsetY);
+        if (_hitOffsetObject)
+            _hitOffsetObject.GetComponent<RectTransform>().anchoredPosition += new Vector2(o.HitOffsetX, o.HitOffsetY);
+    }
+
+    // ===== 布局编辑器支撑（FreeMake 风格拖拽，见 OverlayDragEditor）=====
+    // 编辑器只读写「偏移」这一层，元素自身的布局仍由 ApplyPositionOffsets 决定，
+    // 因此把拖拽接进来不需要任何新的布局数据模型，也不会影响既有渲染路径。
+
+    /// <summary>拖拽把手对应的矩形变换。</summary>
+    internal RectTransform GetHandleTransform(OverlayHandle h) => h switch
+    {
+        OverlayHandle.Main => _mainContainer ? _mainContainer.GetComponent<RectTransform>() : null,
+        OverlayHandle.Bpm => _bpmObject ? _bpmObject.GetComponent<RectTransform>() : null,
+        OverlayHandle.Judge => JudgeRect(0),
+        OverlayHandle.JudgeP2 => JudgeRect(1),
+        OverlayHandle.JudgeP3 => JudgeRect(2),
+        OverlayHandle.JudgeP4 => JudgeRect(3),
+        OverlayHandle.Combo => ComboTransform,
+        OverlayHandle.TimingScale => _timingScaleObject ? _timingScaleObject.GetComponent<RectTransform>() : null,
+        OverlayHandle.Attempt => _attemptObject ? _attemptObject.GetComponent<RectTransform>() : null,
+        OverlayHandle.AttemptCoop => _attemptObject ? _attemptObject.GetComponent<RectTransform>() : null,
+        OverlayHandle.ProgressBar => _progressBarObject ? _progressBarObject.GetComponent<RectTransform>() : null,
+        OverlayHandle.HitOffset => _hitOffsetObject ? _hitOffsetObject.GetComponent<RectTransform>() : null,
+        _ => null,
+    };
+
+    private RectTransform JudgeRect(int i) =>
+        _judgementObjects[i] ? _judgementObjects[i].GetComponent<RectTransform>() : null;
+
+    /// <summary>把手的屏幕矩形（GUI 坐标，左上原点）。覆盖层是 ScreenSpaceOverlay 画布，
+    /// 世界坐标就是屏幕像素，所以 GetWorldCorners 直接可用，不必自己推 anchoredPosition。
+    /// 主栈用启用中子文本的并集：容器自身的 sizeDelta 是固定值，并不等于文本栈的真实高度。</summary>
+    internal bool TryGetHandleScreenRect(OverlayHandle h, out Rect rect)
+    {
+        rect = default;
+        var rt = GetHandleTransform(h);
+        if (rt == null) return false;
+        if (h == OverlayHandle.Main && TryUnionActiveChildren(rt, out rect)) return true;
+        rect = ScreenRectOf(rt);
+        return true;
+    }
+
+    private static Rect ScreenRectOf(RectTransform rt)
+    {
+        var c = new Vector3[4];
+        rt.GetWorldCorners(c);
+        float xMin = Mathf.Min(Mathf.Min(c[0].x, c[1].x), Mathf.Min(c[2].x, c[3].x));
+        float xMax = Mathf.Max(Mathf.Max(c[0].x, c[1].x), Mathf.Max(c[2].x, c[3].x));
+        float yMin = Mathf.Min(Mathf.Min(c[0].y, c[1].y), Mathf.Min(c[2].y, c[3].y));
+        float yMax = Mathf.Max(Mathf.Max(c[0].y, c[1].y), Mathf.Max(c[2].y, c[3].y));
+        // 世界坐标 y 向上、GUI 坐标 y 向下，这里翻一次。
+        return Rect.MinMaxRect(xMin, Screen.height - yMax, xMax, Screen.height - yMin);
+    }
+
+    /// <summary>容器内所有「启用中且有实际尺寸」的直接子文本的屏幕并集。</summary>
+    private static bool TryUnionActiveChildren(RectTransform parent, out Rect union)
+    {
+        union = default;
+        bool any = false;
+        for (int i = 0; i < parent.childCount; i++)
+        {
+            if (parent.GetChild(i) is not RectTransform child) continue;
+            if (!child.gameObject.activeInHierarchy) continue;
+            var r = ScreenRectOf(child);
+            if (r.width <= 0.5f || r.height <= 0.5f) continue;
+            union = any ? Rect.MinMaxRect(
+                Mathf.Min(union.xMin, r.xMin), Mathf.Min(union.yMin, r.yMin),
+                Mathf.Max(union.xMax, r.xMax), Mathf.Max(union.yMax, r.yMax)) : r;
+            any = true;
+        }
+        return any;
+    }
+
+    /// <summary>该把手当前是否可拖。只判断「对象是否存在 + 该槽位在当前模式下是否启用」，
+    /// 不跟随上面的显示开关——用户往往先摆好位置，再回头打开对应元素。</summary>
+    internal bool IsHandleAvailable(OverlayHandle h)
+    {
+        if (GetHandleTransform(h) == null) return false;
+        return h switch
+        {
+            // 判定条槽位 0..3；单人只有 0，协作按人数开放。
+            OverlayHandle.Judge => true,
+            OverlayHandle.JudgeP2 => JudgeCount() > 1,
+            OverlayHandle.JudgeP3 => JudgeCount() > 2,
+            OverlayHandle.JudgeP4 => JudgeCount() > 3,
+            // 尝试次数只有一块文本，协作与否换用另一组偏移字段（见 ApplyPositionOffsets）。
+            // 两者必须互斥：同时可用会让两个把手指向同一对象，而其中一个写的字段
+            // 在当前模式下根本不会被读取，表现为「拖了没反应」。
+            OverlayHandle.Attempt => !IsCoopJudge(),
+            OverlayHandle.AttemptCoop => IsCoopJudge(),
+            _ => true,
+        };
+    }
+
+    /// <summary>协作且多人时才使用 P*JudgeOffset；否则用单人 JudgeOffset。</summary>
+    private static bool IsCoopJudge() => VersionSafe.IsCoopMode() && VersionSafe.GetPlayerCount() > 1;
+    private static int JudgeCount() => IsCoopJudge() ? Mathf.Clamp(VersionSafe.GetPlayerCount(), 1, 4) : 1;
+
+    /// <summary>把手枚举缓存：ForceShowHandleObjects 在每次 Layout 事件里都要遍历，
+    /// Enum.GetValues 每次都会新分配一个数组，不能放在这条热路径上。</summary>
+    private static readonly OverlayHandle[] _allHandles =
+        (OverlayHandle[])Enum.GetValues(typeof(OverlayHandle));
+
+    /// <summary>读取该把手的当前偏移（画布参考单位）。</summary>
+    internal Vector2 GetHandleOffset(OverlayHandle h)
+    {
+        var s = Main.Settings;
+        if (s == null) return Vector2.zero;
+        return h switch
+        {
+            OverlayHandle.Main => new Vector2(s.MainOffsetX, s.MainOffsetY),
+            OverlayHandle.Bpm => new Vector2(s.BPMOffsetX, s.BPMOffsetY),
+            // 与 SetHandleOffset/ApplyPositionOffsets 同口径：协作下槽位 0 用的是
+            // P1Judge 字段，读成 JudgeOffset 会让拖拽起手位置错位、一拖就跳。
+            OverlayHandle.Judge => IsCoopJudge()
+                ? new Vector2(s.P1JudgeOffsetX, s.P1JudgeOffsetY)
+                : new Vector2(s.JudgeOffsetX, s.JudgeOffsetY),
+            OverlayHandle.JudgeP2 => new Vector2(s.P2JudgeOffsetX, s.P2JudgeOffsetY),
+            OverlayHandle.JudgeP3 => new Vector2(s.P3JudgeOffsetX, s.P3JudgeOffsetY),
+            OverlayHandle.JudgeP4 => new Vector2(s.P4JudgeOffsetX, s.P4JudgeOffsetY),
+            OverlayHandle.Combo => new Vector2(s.ComboOffsetX, s.ComboOffsetY),
+            OverlayHandle.TimingScale => new Vector2(s.TimingOffsetX, s.TimingOffsetY),
+            OverlayHandle.Attempt => new Vector2(s.AttemptOffsetX, s.AttemptOffsetY),
+            OverlayHandle.AttemptCoop => new Vector2(s.AttemptCoopOffsetX, s.AttemptCoopOffsetY),
+            OverlayHandle.ProgressBar => new Vector2(s.ProgBarOffsetX, s.ProgBarOffsetY),
+            OverlayHandle.HitOffset => new Vector2(s.HitOffsetX, s.HitOffsetY),
+            _ => Vector2.zero,
+        };
+    }
+
+    /// <summary>写回该把手的偏移。协作模式下第一条判定用 P1Judge 字段，
+    /// 与 ApplyPositionOffsets 的取值口径保持一致。</summary>
+    internal void SetHandleOffset(OverlayHandle h, Vector2 v)
+    {
+        var s = Main.Settings;
+        if (s == null) return;
+        switch (h)
+        {
+            case OverlayHandle.Main: s.MainOffsetX = v.x; s.MainOffsetY = v.y; break;
+            case OverlayHandle.Bpm: s.BPMOffsetX = v.x; s.BPMOffsetY = v.y; break;
+            case OverlayHandle.Judge:
+                if (IsCoopJudge()) { s.P1JudgeOffsetX = v.x; s.P1JudgeOffsetY = v.y; }
+                else { s.JudgeOffsetX = v.x; s.JudgeOffsetY = v.y; }
+                break;
+            case OverlayHandle.JudgeP2: s.P2JudgeOffsetX = v.x; s.P2JudgeOffsetY = v.y; break;
+            case OverlayHandle.JudgeP3: s.P3JudgeOffsetX = v.x; s.P3JudgeOffsetY = v.y; break;
+            case OverlayHandle.JudgeP4: s.P4JudgeOffsetX = v.x; s.P4JudgeOffsetY = v.y; break;
+            case OverlayHandle.Combo: s.ComboOffsetX = v.x; s.ComboOffsetY = v.y; break;
+            case OverlayHandle.TimingScale: s.TimingOffsetX = v.x; s.TimingOffsetY = v.y; break;
+            case OverlayHandle.Attempt: s.AttemptOffsetX = v.x; s.AttemptOffsetY = v.y; break;
+            case OverlayHandle.AttemptCoop: s.AttemptCoopOffsetX = v.x; s.AttemptCoopOffsetY = v.y; break;
+            case OverlayHandle.ProgressBar: s.ProgBarOffsetX = v.x; s.ProgBarOffsetY = v.y; break;
+            case OverlayHandle.HitOffset: s.HitOffsetX = v.x; s.HitOffsetY = v.y; break;
+        }
+    }
+
+    /// <summary>编辑期间强制显示所有可拖元素，保证矩形是真实的、所见即所得。
+    /// 刻意不动各文本的 enabled（内容留空就留空），只看对象层的显隐。
+    /// 退出编辑时 RefreshVisibility 会按用户自己的开关还原。</summary>
+    internal void ForceShowHandleObjects()
+    {
+        for (int i = 0; i < _allHandles.Length; i++)
+        {
+            var h = _allHandles[i];
+            // 只点亮当前模式下真正可拖的把手：否则单人模式会凭空多出三条空判定框
+            //（槽位 1..3 的对象存在但没有文本），画面上全是空框。
+            if (!IsHandleAvailable(h)) continue;
+            var rt = GetHandleTransform(h);
+            if (rt == null) continue;
+            if (!rt.gameObject.activeSelf) rt.gameObject.SetActive(true);
+        }
     }
 
     public void RefreshVisibility()
@@ -577,6 +784,7 @@ public class Overlay
         if (_comboObject) { _comboObject.SetActive(s.ShowCombo); if (s.ShowCombo && GameObject.activeSelf) UpdateCombo(Features.GameLifecycleHelper.ComboCount, false); }
         if (_timingScaleObject) { _timingScaleObject.SetActive(s.ShowTimingScale); if (s.ShowTimingScale && GameObject.activeSelf) UpdateTimingScale(); }
         if (_attemptObject) { _attemptObject.SetActive(s.ShowAttempt || s.ShowFullAttempt); if (_attemptObject.activeSelf) UpdateAttempts(); }
+        if (_hitOffsetObject) _hitOffsetObject.SetActive(s.ShowHitOffset);
         if (_progressBarObject) { _progressBarObject.SetActive(s.ShowProgressBar); if (s.ShowProgressBar && GameObject.activeSelf) UpdateProgressBar(); }
         if (GameObject != null && GameObject.activeSelf)
         {
@@ -1022,6 +1230,7 @@ public class Overlay
         ExtendedOverlay?.DirtyTextCaches();
         ExtendedOverlay?.UpdateAuthor();
         ExtendedOverlay?.RefreshTiming();
+        ExtendedOverlay?.RefreshHitOffset();
         UpdateProgress();     // 进度/检查点/进度条/最佳 + ExtendedOverlay State/Death/Start/Colors
         UpdateTime();
         UpdateAccuracy();
@@ -1118,6 +1327,7 @@ public class Overlay
         if (!suppressNativeUI && s.PatchLevelName) ApplyLevelNamePatch();
         if (s.ShowTimingScale) UpdateTimingScale();
         if (s.ShowAttempt || s.ShowFullAttempt) UpdateAttempts();
+        if (_hitOffsetObject) _hitOffsetObject.SetActive(s.ShowHitOffset);
         ApplyPositionOffsets();
         ApplyAlignment();
         ApplyFontStyle();

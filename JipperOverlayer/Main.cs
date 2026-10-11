@@ -69,6 +69,9 @@ public static class Main
             if (_overlayGo == null)
             {
                 _overlayGo = new GameObject("JipperOverlayer");
+                // 布局编辑器挂在常驻对象上而非覆盖层：覆盖层在未进关卡/暂停时
+                // 整个 GameObject 会被停用，挂上去 OnGUI 就不再执行，编辑器会一起消失。
+                _overlayGo.AddComponent<OverlayDragEditor>();
                 UnityEngine.Object.DontDestroyOnLoad(_overlayGo);
             }
 

@@ -44,6 +44,9 @@ public class Settings
 
     // ==== 每文本独立小数位 ====
     public int ProgressDecimal = 2, AccuracyDecimal = 2, XAccuracyDecimal = 2, BestDecimal = 2, TimingDecimal = 5;
+    /// <summary>判定条旁「打击误差」的独立小数位（issue #6）。不复用 TimingDecimal：
+    /// 后者的滑条只在 ShowTiming 开启时可见，只开误差文本就没法调精度。</summary>
+    public int HitOffsetDecimal = 5;
 
     /// <summary>任一 ExtendedOverlay 扩展文本开启。拆掉总开关后，用它决定「ExtendedOverlay 风格」的连带表现
     /// （富格式进度文本、扩展文本的小数精度等），避免普通模式用户被动接受这些变化。</summary>
@@ -57,6 +60,9 @@ public class Settings
     public float FPSRefreshRate = 0.2f;
     public int ExtendedDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
+    /// <summary>在判定条旁显示本次敲击的毫秒误差（issue #6）。独立于 ShowTiming：
+    /// 主栈的 Timing 文本在左上角，这个专门贴着判定条，方便打击瞬间余光读取。</summary>
+    public bool ShowHitOffset;
     public bool RemoveNotRequireInAuto = true, CheckPseudo = true, AllowELCombo = true, AllowOrangeCombo = true;
     public bool ComboTitleAltOnNonPerfect = false;
     /// <summary>结算界面「完美」明细：仅在判定文本前把版式预设临时压成 Default，让游戏原生
@@ -168,6 +174,8 @@ public class Settings
     public float P3JudgeOffsetX, P3JudgeOffsetY, P4JudgeOffsetX, P4JudgeOffsetY;
     public float ComboOffsetX, ComboOffsetY, TimingOffsetX, TimingOffsetY;
     public float AttemptOffsetX, AttemptOffsetY, AttemptCoopOffsetX, AttemptCoopOffsetY, ProgBarOffsetX, ProgBarOffsetY;
+    /// <summary>判定条旁「打击误差」文本的额外偏移（issue #6）。</summary>
+    public float HitOffsetX, HitOffsetY;
     public int ConfigVersion;
     public bool ShowXPerfectInJudgement;
     public bool ShowAutoInXPerfect;
@@ -283,6 +291,7 @@ public class Settings
             {
                 PosSlide2(Tr.Get(Tr.Key.PosCombo), ref ComboOffsetX, ref ComboOffsetY);
                 PosSlide2(Tr.Get(Tr.Key.PosTiming), ref TimingOffsetX, ref TimingOffsetY);
+                PosSlide2(Tr.Get(Tr.Key.PosHitOffset), ref HitOffsetX, ref HitOffsetY);
                 PosSlide2(Tr.Get(Tr.Key.PosAttempt), ref AttemptOffsetX, ref AttemptOffsetY);
                 if (VersionSafe.IsV141OrLater)
                     PosSlide2($"{Tr.Get(Tr.Key.PosAttempt)}\n{Tr.Get(Tr.Key.Coop)}", ref AttemptCoopOffsetX, ref AttemptCoopOffsetY);
@@ -291,6 +300,12 @@ public class Settings
             if (GUILayout.Button(Tr.Get(Tr.Key.ResetPositions), GUILayout.ExpandWidth(false)))
                 ResetCustomPos();
         }
+
+        // FreeMake 风格的拖拽编辑器入口：比逐个拉 X/Y 滑杆直观得多，
+        // 写回的仍是同一组偏移字段（见 OverlayDragEditor）。
+        bool editingLayout = Overlayer.OverlayDragEditor.IsEditing;
+        if (GUILayout.Button(Tr.Get(Tr.Key.OpenLayoutEditor) + (editingLayout ? "  ●" : "")))
+            Overlayer.OverlayDragEditor.Instance?.SetActive(!editingLayout);
 
         GUILayout.Space(5);
     }
@@ -523,6 +538,17 @@ public class Settings
                     if (o != null) { o.SetupLocationMain(); o.ExtendedOverlay?.RefreshTiming(); }
                 });
                 HelpLabel(Tr.Get(Tr.Key.HelpTimingMode));
+            }
+            // 判定条旁的本次敲击误差（issue #6）：与上方主栈 Timing 是同一个采样值，
+            // 但贴判定条独立显示，方便打击瞬间余光读取。
+            ShowHitOffset = TogR(Tr.Key.ShowHitOffset, ShowHitOffset);
+            if (ShowHitOffset)
+            {
+                DecSlideField(ref HitOffsetDecimal, "hitOffsetDec", Tr.Key.DecimalPrecision, 5,
+                    () => Overlay.Instance?.ExtendedOverlay?.RefreshHitOffset());
+                Colors.JHitOffset.SettingGUI(ColorChanged(() => Overlay.Instance?.ExtendedOverlay?.RefreshHitOffset()), Tr.Get(Tr.Key.HitOffsetColor),
+                    () => { Colors.JHitOffset = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
+                HelpLabel(Tr.Get(Tr.Key.HelpHitOffset));
             }
             GUILayout.BeginHorizontal();
             GUILayout.Label(Tr.Get(Tr.Key.DecimalPrecision), GUILayout.Width(120));
@@ -904,13 +930,14 @@ public class Settings
         return changed;
     }
 
-    void ResetCustomPos()
+    internal void ResetCustomPos()
     {
         MainOffsetX = MainOffsetY = BPMOffsetX = BPMOffsetY = JudgeOffsetX = JudgeOffsetY = 0;
         P1JudgeOffsetX = P1JudgeOffsetY = P2JudgeOffsetX = P2JudgeOffsetY = 0;
         P3JudgeOffsetX = P3JudgeOffsetY = P4JudgeOffsetX = P4JudgeOffsetY = 0;
         ComboOffsetX = ComboOffsetY = TimingOffsetX = TimingOffsetY = 0;
         AttemptOffsetX = AttemptOffsetY = AttemptCoopOffsetX = AttemptCoopOffsetY = ProgBarOffsetX = ProgBarOffsetY = 0;
+        HitOffsetX = HitOffsetY = 0;
         _slideFields.Clear();
         Overlayer.Overlay.Instance?.ApplyPositionOffsets();
     }
@@ -1271,6 +1298,7 @@ public class Settings
         DrawLabelField("Death", ref Labels.Death);
         DrawLabelField("Start", ref Labels.Start);
         DrawLabelField("Timing", ref Labels.Timing);
+        DrawLabelField("Hit Offset", ref Labels.HitOffset);
 
         GUILayout.Space(3);
         GUILayout.Label("  -- State Texts --");
@@ -1397,6 +1425,7 @@ public class Settings
         CheckInt(ref s.XAccuracyDecimal, 2, 0, 4);
         CheckInt(ref s.BestDecimal, 2, 0, 4);
         CheckInt(ref s.TimingDecimal, 5, 0, 5);
+        CheckInt(ref s.HitOffsetDecimal, 5, 0, 5);
         CheckInt(ref s.MainFontSize, 25, 8, 200);
         CheckInt(ref s.BPMFontSize, 25, 8, 200);
         CheckInt(ref s.JudgeFontSize, 25, 8, 200);
@@ -1420,6 +1449,7 @@ public class Settings
         CheckFinite(ref s.AttemptOffsetX); CheckFinite(ref s.AttemptOffsetY);
         CheckFinite(ref s.AttemptCoopOffsetX); CheckFinite(ref s.AttemptCoopOffsetY);
         CheckFinite(ref s.ProgBarOffsetX); CheckFinite(ref s.ProgBarOffsetY);
+        CheckFinite(ref s.HitOffsetX); CheckFinite(ref s.HitOffsetY);
         CheckAlign(ref s.MainAlign); CheckAlign(ref s.BPMAlign); CheckAlign(ref s.JudgeAlign);
         CheckAlign(ref s.ComboAlign); CheckAlign(ref s.ComboValAlign); CheckAlign(ref s.TimingAlign); CheckAlign(ref s.AttemptAlign);
         if (s.TextEffects == null) { s.TextEffects = new TextEffectConfig(); changed = true; }
