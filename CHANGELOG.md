@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Performance
+
+- **Strongly typed game-member reads**: `GameRefs` no longer boxes through `object` or pays a full reflected `GetValue`/`Invoke` on every access — the members are bound as strongly typed delegates (`FieldRefAccess` for fields, `CreateDelegate` for properties), which matters most for `paused` (read every frame) and `currentSeqID` (read on every hit). The declared member type is verified at bind time and a mismatch falls back to the reflected getter, so a wrong assumption degrades loudly in the log instead of silently returning `default` and leaving the overlay with frozen values
+
 ## v1.1.7.1 — 2026.10.11
 
 ### Features
