@@ -6,6 +6,10 @@
 
 - **Strongly typed game-member reads**: `GameRefs` no longer boxes through `object` or pays a full reflected `GetValue`/`Invoke` on every access — the members are bound as strongly typed delegates (`FieldRefAccess` for fields, `CreateDelegate` for properties), which matters most for `paused` (read every frame) and `currentSeqID` (read on every hit). The declared member type is verified at bind time and a mismatch falls back to the reflected getter, so a wrong assumption degrades loudly in the log instead of silently returning `default` and leaving the overlay with frozen values
 
+### Bug Fixes
+
+- **Forward combo title sat too low**: the non-reversed layout placed `ComboTitle` at a hard-coded `43.505`, which is half the value text height only at the reference's `fontSize` 78 — with the default `ComboValFontSize` 108 the title was ~17px short of the number's top edge and sank into the digits. The offset is now half the value text's actual height, derived from the live font size (measured once from the TMP preferred height, with the reference ratio as a fallback), so it tracks any `ComboValFontSize` and is re-applied when the font size setting changes; the bump animation also follows the growing font instead of a fixed `+15`. The reversed layout is untouched
+
 ## v1.1.7.1 — 2026.10.11
 
 ### Features

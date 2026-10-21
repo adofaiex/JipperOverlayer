@@ -36,6 +36,12 @@ public class Overlay
     public TextMeshProUGUI ComboText;
     public RectTransform ComboTextTransform;
     internal RectTransform _comboTitleTransform;
+    // 连击数字「文本框高度 / 字号」的比例。TMP 的 preferredHeight 随字号线性变化，
+    // 量一次就能换算出任意字号下的半字高，用于把标题贴到数字顶边。
+    private float _comboValHeightRatio;
+    // 参考实现的正向偏移 43.505 = 87.01 / 2 是 fontSize 78 时的一半字高，
+    // 量不到实际高度时用它兜底，保证不同默认字号下也不会陷进数字里。
+    private const float ComboDefaultHeightRatio = 87.01f / 78f;
     public TextMeshProUGUI BPMText;
     public TextMeshProUGUI[] JudgementTexts = new TextMeshProUGUI[4];
     public TextMeshProUGUI TimingScaleText;
@@ -489,6 +495,8 @@ public class Overlay
         foreach (var jt in JudgementTexts) if (jt) jt.fontSize = s.JudgeFontSize;
         if (ComboTitle) ComboTitle.fontSize = s.ComboTitleFontSize;
         if (ComboText) ComboText.fontSize = s.ComboValFontSize;
+        // 正向标题的位置由数字字号推导，字号一变就得重贴；反向保持原样。
+        if (!s.ComboLineReversed) ApplyForwardComboTitle();
         if (TimingScaleText) TimingScaleText.fontSize = s.TimingFontSize;
         if (AttemptText) AttemptText.fontSize = s.AttemptFontSize;
         if (HitOffsetText) HitOffsetText.fontSize = s.MainFontSize;
@@ -1052,9 +1060,47 @@ public class Overlay
             else
             {
                 ComboTextTransform.anchoredPosition = Vector2.zero;
-                if (_comboTitleTransform) _comboTitleTransform.anchoredPosition = new Vector2(0, 43.505f);
+                ApplyForwardComboTitle();
             }
         }
+    }
+
+    /// <summary>
+    /// 正向布局：把「连击标题」贴到「连击数字」文本框的上边缘。
+    /// 数字的 anchor 与 pivot 都在同一条锚点线上（pivot 居中），所以它的矩形是
+    /// 上下各半个字高；标题 pivot 在底边（y=0），只有放在「数字高度 / 2」处才贴住。
+    /// 参考实现写死 43.505 = 87.01 / 2，那是字号 78 时的一半字高；本模组默认
+    /// ComboValFontSize = 108（半字高约 60.2），沿用 43.505 会让标题比数字顶边
+    /// 低约 16.7，看起来就是「矮了 / 陷进数字里」。这里按实际字号换算。
+    /// </summary>
+    internal void ApplyForwardComboTitle()
+    {
+        if (!_comboTitleTransform || !ComboText) return;
+        _comboValHeightRatio = MeasureComboValHeightRatio();
+        _comboTitleTransform.anchoredPosition =
+            new Vector2(0, _comboValHeightRatio * ComboText.fontSize * 0.5f);
+    }
+
+    /// <summary>正向弹跳动画逐帧用：字号在动，标题跟着半字高一起走。</summary>
+    internal float ForwardComboTitleY(float fontSize)
+    {
+        float ratio = _comboValHeightRatio > 0 ? _comboValHeightRatio : ComboDefaultHeightRatio;
+        return ratio * fontSize * 0.5f;
+    }
+
+    // TMP 的 preferredHeight 与字号成正比，量一次即可换算任意字号。
+    // 量不到（文本还没生成 / 对象被禁用）时退回参考实现的比例。
+    private float MeasureComboValHeightRatio()
+    {
+        if (!ComboText) return ComboDefaultHeightRatio;
+        float fontSize = ComboText.fontSize;
+        if (fontSize <= 0) return ComboDefaultHeightRatio;
+        float height = ComboText.preferredHeight;
+        if (height <= 0 && ComboTextTransform) height = ComboTextTransform.rect.height;
+        if (height <= 0) return ComboDefaultHeightRatio;
+        float ratio = height / fontSize;
+        // 单行数字的文本框高度必然在字号附近；越界说明取到了异常值，宁可退回常量。
+        return ratio > 0.8f && ratio < 1.8f ? ratio : ComboDefaultHeightRatio;
     }
 
     public Color UpdateComboColor(int combo)

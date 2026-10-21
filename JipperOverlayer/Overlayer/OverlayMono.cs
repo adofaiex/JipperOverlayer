@@ -62,7 +62,9 @@ public class OverlayMono : MonoBehaviour
                     }
                     else
                     {
-                        Overlay._comboTitleTransform.anchoredPosition = new Vector2(0, 43.505f + OutExpoChange(t) * 15f);
+                        // 正向：标题始终贴住数字文本框上边缘，字号弹大时跟着一起抬。
+                        Overlay._comboTitleTransform.anchoredPosition =
+                            new Vector2(0, Overlay.ForwardComboTitleY(Overlay.ComboText.fontSize));
                     }
                 }
                 catch { }
@@ -71,6 +73,10 @@ public class OverlayMono : MonoBehaviour
             elapsed += Time.deltaTime * 1000;
         }
         Overlay.ComboText.fontSize = Main.Settings.ComboValFontSize;
+        // 最后一帧 t 未必正好等于 1，显式把标题停回静止位置。
+        if (!reversed && Overlay._comboTitleTransform)
+            Overlay._comboTitleTransform.anchoredPosition =
+                new Vector2(0, Overlay.ForwardComboTitleY(Overlay.ComboText.fontSize));
         _comboAnim = null;
     }
 
