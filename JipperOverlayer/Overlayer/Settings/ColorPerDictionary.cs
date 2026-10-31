@@ -9,6 +9,7 @@ namespace JipperOverlayer.Overlayer;
 public class ColorPerDictionary {
     public ColorCache PerfectColor;
     public List<ProgressColorCache> List = [];
+    [JsonIgnore] private List<ProgressColorCache> _original;
     [JsonIgnore] public bool Expanded;
     [JsonIgnore] public ProgressColorCache ExpandedCache;
     private static readonly GUIStyle _foldoutStyle = new()
@@ -19,7 +20,9 @@ public class ColorPerDictionary {
     public ColorPerDictionary() { }
 
     public ColorPerDictionary(IEnumerable<(float, Color)> collection) {
-        foreach (var item in collection) Add(item);
+        List = []; foreach (var item in collection) AddWithoutSort(item);
+        List.Sort((a, b) => a.Progress.CompareTo(b.Progress)); InvalidateHexLut();
+        _original = CloneList();
     }
 
     public ColorPerDictionary(ColorCache perfectColor) : this() { PerfectColor = perfectColor; }
@@ -28,6 +31,19 @@ public class ColorPerDictionary {
 
     public ColorPerDictionary(IEnumerable<(float, Color)> collection, Color color) : this(collection) {
         PerfectColor = new ColorCache(color);
+        // _original already cloned for List; PerfectColor reset tracking is via ColorCache._originalColor already set, but also preserve via Setup if needed
+        if (PerfectColor != null) ColorCache.Setup(ref PerfectColor, color);
+    }
+
+    // internal helper without per-add sort (used in ctor for efficiency)
+    void AddWithoutSort((float, Color) item) {
+        List.Add(new ProgressColorCache(item.Item1, item.Item2));
+    }
+
+    List<ProgressColorCache> CloneList() {
+        var clone = new List<ProgressColorCache>(List.Count);
+        foreach (var c in List) clone.Add(new ProgressColorCache(c.Progress, (Color)c));
+        return clone;
     }
 
     // Call after deserialization to ensure list is sorted
@@ -231,5 +247,73 @@ public class ColorPerDictionary {
     public void Add((float, Color) item) {
         List.Add(new ProgressColorCache(item.Item1, item.Item2));
         SortList();
+    }
+
+    public void ApplyBaseColor(Color baseColor)
+    {
+        foreach (var c in List) c.ApplyHue(baseColor);
+        PerfectColor?.ApplyHue(baseColor);
+        InvalidateHexLut();
+    }
+
+    public Color GetPreviewColor(float key, Color baseColor)
+    {
+        if (float.IsNaN(key)) key = 0;
+        else if (float.IsInfinity(key)) key = key > 0 ? 1 : 0;
+        if (key < 0) key = 0;
+        if (key > 1) key = 1;
+        if (PerfectColor != null && key == 1) return PerfectColor.ApplyHuePreview(baseColor);
+        if (List.Count == 0) return PerfectColor != null ? PerfectColor.ApplyHuePreview(baseColor) : Color.white;
+        int index = BinarySearch(key);
+        if (index == 0) return List[0].ApplyHuePreview(baseColor);
+        if (index == List.Count) return List[List.Count - 1].ApplyHuePreview(baseColor);
+        if (List[index].Progress == key) return List[index].ApplyHuePreview(baseColor);
+        float s = List[index - 1].Progress;
+        float e = List[index].Progress;
+        if (e - s <= 1e-6f) return List[index].ApplyHuePreview(baseColor);
+        float t = (key - s) / (e - s);
+        return Color.Lerp(List[index - 1].ApplyHuePreview(baseColor), List[index].ApplyHuePreview(baseColor), t);
+    }
+
+    public void Reset()
+    {
+        if (_original != null)
+        {
+            List = new List<ProgressColorCache>(_original.Count);
+            foreach (var c in _original) List.Add(new ProgressColorCache(c.Progress, (Color)c));
+        }
+        else
+        {
+            List.Clear();
+        }
+        PerfectColor?.Reset();
+        InvalidateHexLut();
+    }
+
+    public static void Setup(ref ColorPerDictionary cache, IEnumerable<(float, Color)> collection)
+    {
+        if (cache == null)
+        {
+            cache = new ColorPerDictionary(collection);
+            return;
+        }
+        var defaults = new List<ProgressColorCache>();
+        foreach (var item in collection) defaults.Add(new ProgressColorCache(item.Item1, item.Item2));
+        defaults.Sort((a, b) => a.Progress.CompareTo(b.Progress));
+        cache._original = defaults;
+    }
+
+    public static void Setup(ref ColorPerDictionary cache, IEnumerable<(float, Color)> collection, Color color)
+    {
+        if (cache == null)
+        {
+            cache = new ColorPerDictionary(collection, color);
+            return;
+        }
+        var defaults = new List<ProgressColorCache>();
+        foreach (var item in collection) defaults.Add(new ProgressColorCache(item.Item1, item.Item2));
+        defaults.Sort((a, b) => a.Progress.CompareTo(b.Progress));
+        cache._original = defaults;
+        ColorCache.Setup(ref cache.PerfectColor, color);
     }
 }

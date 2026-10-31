@@ -14,20 +14,26 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     public float CurBest = -1;
     public int CurCheck;
     public int LastCheckpoint = -1;
-    private string[] _accStrings;
-    private string[] _xaccStrings;
-    private string[] _progressStrings;
 
     public OverlayTextManagerCoop(Overlay overlay)
     {
         int count = Math.Max(1, scrPlayerManager.playerCount);
         PlayerDatas = new PlayerData[count];
-        _accStrings = new string[PlayerDatas.Length + 1];
-        _xaccStrings = new string[PlayerDatas.Length + 1];
-        _progressStrings = new string[PlayerDatas.Length + 1];
+        for (int i = 0; i < PlayerDatas.Length; i++)
+        {
+            ref var pd = ref PlayerDatas[i];
+            pd.ProgressCache.Buffer = new char[48];
+            pd.AccuracyCache.Buffer = new char[64];
+            pd.XAccuracyCache.Buffer = new char[64];
+            pd.XScoreCache.Buffer = new char[96];
+        }
         if (overlay.ProgressText) overlay.ProgressText.color = Color.white;
         if (overlay.AccuracyText) overlay.AccuracyText.color = Color.white;
         if (overlay.XAccuracyText) overlay.XAccuracyText.color = Color.white;
+        // XScore 底色必须回白：分隔符继承组件底色，而单人模式 SetDualText 会把
+        // 底色写成渐变色；coop 的数值颜色全靠 rich text 标签，残留底色会染到竖线上。
+        var xs = overlay.ExtendedOverlay?.XScoreText;
+        if (xs) xs.color = Color.white;
     }
 
     static bool TryGetPlayer(int index, out scrPlayer player)
@@ -72,7 +78,13 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     protected void SetProgress(ref PlayerData pData, float progress)
     {
         pData.Progress = progress;
-        pData.ProgressString = $" | <color=#{Main.Settings.Colors.GetProgressHex(progress, true)}>{Math.Round(progress * 100, Main.Settings.ProgressDecimal)}%</color>";
+        _sb.Clear();
+        _sb.Append(" | <color=#");
+        _sb.Append(Main.Settings.Colors.GetProgressHex(progress, true));
+        _sb.Append(">");
+        _sb.Append(Math.Round(progress * 100, Main.Settings.ProgressDecimal));
+        _sb.Append("%</color>");
+        pData.ProgressCache.Store(_sb);
         if (MaxProgress < progress) MaxProgress = progress;
     }
 
@@ -93,9 +105,10 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             else if (index >= 0 && index < PlayerDatas.Length)
                 SetAccuracy(ref PlayerDatas[index], overlay, index);
 
-            _accStrings[0] = Main.Settings.Labels.Accuracy;
-            for (int i = 0; i < PlayerDatas.Length; i++) _accStrings[i + 1] = PlayerDatas[i].AccuracyString;
-            overlay.AccuracyText.text = string.Concat(_accStrings);
+            _sb.Clear();
+            _sb.Append(Main.Settings.Labels.Accuracy);
+            for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].AccuracyCache.AppendTo(_sb);
+            overlay.AccuracyText.SetText(_sb);
         }
         if (Main.Settings.ShowXAccuracy)
         {
@@ -105,9 +118,10 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             else if (index >= 0 && index < PlayerDatas.Length)
                 SetXAccuracy(ref PlayerDatas[index], index);
 
-            _xaccStrings[0] = Main.Settings.Labels.XAccuracy;
-            for (int i = 0; i < PlayerDatas.Length; i++) _xaccStrings[i + 1] = PlayerDatas[i].XAccuracyString;
-            overlay.XAccuracyText.text = string.Concat(_xaccStrings);
+            _sb.Clear();
+            _sb.Append(Main.Settings.Labels.XAccuracy);
+            for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].XAccuracyCache.AppendTo(_sb);
+            overlay.XAccuracyText.SetText(_sb);
         }
         if (s.ShowXScore && HitMarginCompat.HasNativeXPerfect)
         {
@@ -120,10 +134,14 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             var xs = overlay.ExtendedOverlay?.XScoreText;
             if (xs)
             {
+                // 各段分隔符 " | " 在 rich text 标签之外，继承组件底色；单人路径
+                // SetDualText 会把底色写成渐变色（开局 t=1 即 PerfectColor），coop
+                // 不重置的话，上次单人局的残留色会染在竖线分隔符上。
+                xs.color = Color.white;
                 _sb.Clear();
                 _sb.Append("<color=white>XScore |</color>");
-                for (int i = 0; i < PlayerDatas.Length; i++) _sb.Append(PlayerDatas[i].XScoreString);
-                xs.text = _sb.ToString();
+                for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].XScoreCache.AppendTo(_sb);
+                xs.SetText(_sb);
             }
         }
     }
@@ -138,19 +156,39 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         float maxAcc = 1 + ((playerSeq ?? GameRefs.CurrentSeqID) - overlay.NoCheckStartTile + 1) * 0.0001f;
         float xacc = trackers[i].percentXAcc;
         if (float.IsNaN(xacc)) xacc = 1;
-        string current = Math.Round(acc * 100, s.AccuracyDecimal) + "%";
-        if (s.AccuracyTextType != PotentialTextType.Current)
+        var type = s.AccuracyTextType;
+        int dec = s.AccuracyDecimal;
+        string hex = s.Colors.GetAccuracyHex(xacc == 1 ? 1 : acc / maxAcc, xacc == 1);
+        _sb.Clear();
+        _sb.Append(" | <color=#");
+        _sb.Append(hex);
+        _sb.Append(">");
+        if (type == PotentialTextType.Current)
         {
-            // 潜力值：各玩家用自己的判定数组外推。coop 无独立潜力文本槽，全部内联进主文本
+            _sb.Append(Math.Round(acc * 100, dec));
+            _sb.Append('%');
+        }
+        else
+        {
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
             int seqID = GetPlayerSeqID(i) ?? GameRefs.CurrentSeqID;
             float potential = AccuracyMath.GetPotentialAccuracy(hits, acc,
                 AccuracyMath.GetJudgedTiles(hits, seqID), AccuracyMath.GetRemainingTiles(seqID));
-            string p = Math.Round(potential * 100, s.AccuracyDecimal) + "%";
-            if (s.AccuracyTextType == PotentialTextType.Potential) current = p;
-            else current += $" ({p})";
+            if (type == PotentialTextType.Potential)
+            {
+                _sb.Append(Math.Round(potential * 100, dec));
+                _sb.Append('%');
+            }
+            else // Both / BothInOneLine -> "curr (pot)"
+            {
+                _sb.Append(Math.Round(acc * 100, dec));
+                _sb.Append("% (");
+                _sb.Append(Math.Round(potential * 100, dec));
+                _sb.Append("%)");
+            }
         }
-        pData.AccuracyString = $" | <color=#{s.Colors.GetAccuracyHex(xacc == 1 ? 1 : acc / maxAcc, xacc == 1)}>{current}</color>";
+        _sb.Append("</color>");
+        pData.AccuracyCache.Store(_sb);
     }
 
     protected void SetXAccuracy(ref PlayerData pData, int i)
@@ -160,20 +198,39 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         if (trackers == null || i < 0 || i >= trackers.Length || trackers[i] == null) return;
         float xacc = trackers[i].percentXAcc;
         if (float.IsNaN(xacc)) xacc = 1;
-        string current = Math.Round(xacc * 100, s.XAccuracyDecimal) + "%";
-        if (s.XAccuracyTextType != PotentialTextType.Current)
+        var type = s.XAccuracyTextType;
+        int dec = s.XAccuracyDecimal;
+        string hex = s.Colors.GetXAccuracyHex(xacc, xacc == 1);
+        _sb.Clear();
+        _sb.Append(" | <color=#");
+        _sb.Append(hex);
+        _sb.Append(">");
+        if (type == PotentialTextType.Current)
+        {
+            _sb.Append(Math.Round(xacc * 100, dec));
+            _sb.Append('%');
+        }
+        else
         {
             int seqID = GetPlayerSeqID(i) ?? GameRefs.CurrentSeqID;
-            // 与单人路径一致：已判定数必须经 GetJudgedTiles 扣除 Midspin（r149+）。
-            // 原实现直接拿 seqID 当已判定数，含 Midspin 的图里潜力 X 精度会偏。
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
             float potential = AccuracyMath.GetPotentialXAccuracy(xacc,
                 AccuracyMath.GetJudgedTiles(hits, seqID), AccuracyMath.GetRemainingTiles(seqID));
-            string p = Math.Round(potential * 100, s.XAccuracyDecimal) + "%";
-            if (s.XAccuracyTextType == PotentialTextType.Potential) current = p;
-            else current += $" ({p})";
+            if (type == PotentialTextType.Potential)
+            {
+                _sb.Append(Math.Round(potential * 100, dec));
+                _sb.Append('%');
+            }
+            else
+            {
+                _sb.Append(Math.Round(xacc * 100, dec));
+                _sb.Append("% (");
+                _sb.Append(Math.Round(potential * 100, dec));
+                _sb.Append("%)");
+            }
         }
-        pData.XAccuracyString = $" | <color=#{s.Colors.GetXAccuracyHex(xacc, xacc == 1)}>{current}</color>";
+        _sb.Append("</color>");
+        pData.XAccuracyCache.Store(_sb);
     }
 
     protected void SetXScore(ref PlayerData pData, int i)
@@ -183,7 +240,6 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         int seqID = GetPlayerSeqID(i) ?? GameRefs.CurrentSeqID;
         int judged = AccuracyMath.GetJudgedTiles(hits, seqID);
         int remaining = AccuracyMath.GetRemainingTiles(seqID);
-        // 原生读数 + 游戏结算同口径（MAX−n = maxXScore − xScore − 2×剩余玩家打击格）
         var trackers = scrMistakesManager.marginTrackers;
         bool native = AccuracyMath.TryGetNativeXScore(trackers != null && i < trackers.Length ? trackers[i] : null,
             out int x, out int mapMax);
@@ -202,24 +258,48 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             potentialTotal = soFarMax + remaining * AccuracyMath.XPerfectValue;
             potentialX = x + remaining * AccuracyMath.XPerfectValue;
         }
-        string current = AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType);
-        if (s.XScorePotentialType != PotentialTextType.Current)
+        string hex = s.Colors.XScore.GetHex(soFarMax == 0 ? 1 : (float)x / soFarMax);
+        var type = s.XScorePotentialType;
+        _sb.Clear();
+        _sb.Append(" | <color=#");
+        _sb.Append(hex);
+        _sb.Append(">");
+        if (type == PotentialTextType.Current)
+        {
+            _sb.Append(AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType));
+        }
+        else if (type == PotentialTextType.Potential)
         {
             string p = AccuracyMath.GetXScoreText(potentialX, potentialTotal, s.XScoreTextType, potential: true);
-            if (s.XScorePotentialType == PotentialTextType.Potential) current = p;
-            else current += $" ({p})";
+            _sb.Append(p);
         }
-        pData.XScoreString = $" | <color=#{s.Colors.XScore.GetHex(soFarMax == 0 ? 1 : (float)x / soFarMax)}>{current}</color>";
+        else // Both / BothInOneLine
+        {
+            string cur = AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType);
+            string p = AccuracyMath.GetXScoreText(potentialX, potentialTotal, s.XScoreTextType, potential: true);
+            _sb.Append(cur);
+            _sb.Append(" (");
+            _sb.Append(p);
+            _sb.Append(')');
+        }
+        _sb.Append("</color>");
+        pData.XScoreCache.Store(_sb);
     }
 
     public void UpdateProgress(Overlay overlay)
     {
-        var strings = _progressStrings;
-        strings[0] = Main.Settings.Labels.Progress;
+        _sb.Clear();
+        _sb.Append(Main.Settings.Labels.Progress);
         if (overlay.StartTile > 0)
-            strings[0] += $" | <color=#{Main.Settings.Colors.GetProgressHex(overlay.StartProgress, true)}>{Math.Round(overlay.StartProgress * 100, Main.Settings.ProgressDecimal)}%</color> ~";
-        for (int i = 0; i < PlayerDatas.Length; i++) strings[i + 1] = PlayerDatas[i].ProgressString;
-        overlay.ProgressText.text = string.Concat(strings);
+        {
+            _sb.Append(" | <color=#");
+            _sb.Append(Main.Settings.Colors.GetProgressHex(overlay.StartProgress, true));
+            _sb.Append(">");
+            _sb.Append(Math.Round(overlay.StartProgress * 100, Main.Settings.ProgressDecimal));
+            _sb.Append("%</color> ~");
+        }
+        for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].ProgressCache.AppendTo(_sb);
+        overlay.ProgressText.SetText(_sb);
     }
 
     public void UpdateProgressBar(Overlay overlay)
@@ -239,7 +319,17 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             CurCheck++; updated = true;
         }
         if (LastCheckpoint == GameRefs.CheckpointsUsed && !updated) return;
-        overlay.CheckpointText.text = $"<color=white>{Main.Settings.Labels.Checkpoint} |</color> {GameRefs.CheckpointsUsed} ({CurCheck}/{overlay.Checkpoints.Length})";
+        _sb.Clear();
+        _sb.Append("<color=white>");
+        _sb.Append(Main.Settings.Labels.Checkpoint);
+        _sb.Append(" |</color> ");
+        _sb.Append(GameRefs.CheckpointsUsed);
+        _sb.Append(" (");
+        _sb.Append(CurCheck);
+        _sb.Append('/');
+        _sb.Append(overlay.Checkpoints.Length);
+        _sb.Append(')');
+        overlay.CheckpointText.SetText(_sb);
         LastCheckpoint = GameRefs.CheckpointsUsed;
     }
 
@@ -257,17 +347,23 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     public void UpdateBestText(Overlay overlay)
     {
         float best = CurBest > MaxProgress || overlay.AutoOnceEnabled ? CurBest : MaxProgress;
-        overlay.BestText.text = $"<color=white>{Main.Settings.Labels.Best} |</color> {Math.Round(best * 100, Main.Settings.BestDecimal)}%";
+        _sb.Clear();
+        _sb.Append("<color=white>");
+        _sb.Append(Main.Settings.Labels.Best);
+        _sb.Append(" |</color> ");
+        _sb.Append(Math.Round(best * 100, Main.Settings.BestDecimal));
+        _sb.Append('%');
+        overlay.BestText.SetText(_sb);
         overlay.BestText.color = Main.Settings.Colors.GetBestColor(best);
     }
 
     public struct PlayerData
     {
         public float Progress;
-        public string ProgressString;
-        public string AccuracyString;
-        public string XAccuracyString;
-        public string XScoreString;
+        public CharCache ProgressCache;
+        public CharCache AccuracyCache;
+        public CharCache XAccuracyCache;
+        public CharCache XScoreCache;
     }
 
     // ===== Extended-overlay helpers (coop, per-player) =====
@@ -295,7 +391,6 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         for (int i = 0; i < count; i++)
         {
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
-            // 死亡数 = FailMiss + FailOverload（r150 下标为 10/11）
             int death = HitMarginCompat.Get(hits, HitMarginCompat.FailMiss) + HitMarginCompat.Get(hits, HitMarginCompat.FailOverload);
             _playerDeath[i] = death;
             if (_lastPlayerDeath[i] != death) { _lastPlayerDeath[i] = death; changed = true; }
@@ -306,7 +401,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             sb.Append(death);
             sb.Append("</color>");
         }
-        if (changed) overlay.DeathText.text = sb.ToString();
+        if (changed) overlay.DeathText.SetText(sb);
         overlay.DeathText.color = Color.white;
     }
 
@@ -334,7 +429,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             sb.Append("</color>");
         }
         if (overlay.StartTile != 0) { sb.Append("  "); sb.Append(labels.StateMidStart); }
-        overlay.StateText.text = sb.ToString();
+        overlay.StateText.SetText(sb);
         overlay.StateText.color = Color.white;
     }
 
@@ -346,7 +441,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         if (GameRefs.CurrentSeqID == overlay.StartTile)
             state = labels.StateWaiting;
         else if (!GameRefs.IsAuto && player.auto)
-            state = labels.StateAuto;  // respawn waiting
+            state = labels.StateAuto;
         else
         {
             var curFloor = player.planetarySystem?.chosenPlanet?.currfloor;
@@ -391,7 +486,6 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         for (int i = 0; i < count; i++)
         {
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
-            // “Too” 判定数 = TooEarly + TooLate（r150 下标为 0/8）
             total += HitMarginCompat.Get(hits, HitMarginCompat.TooEarly) + HitMarginCompat.Get(hits, HitMarginCompat.TooLate);
         }
         return total;

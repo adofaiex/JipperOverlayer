@@ -550,6 +550,7 @@ public class Settings
                     () => { Colors.JHitOffset = new([(0f, Color.red), (1f, Color.green)]); Colors.Save(); });
                 HelpLabel(Tr.Get(Tr.Key.HelpHitOffset));
             }
+            DrawGlobalColorsSection();
             GUILayout.BeginHorizontal();
             GUILayout.Label(Tr.Get(Tr.Key.DecimalPrecision), GUILayout.Width(120));
             ExtendedDecimalPrecision = (int)GUILayout.HorizontalSlider(ExtendedDecimalPrecision, 0, 5);
@@ -614,6 +615,97 @@ public class Settings
     /// <summary>带重排的开关：先返回新值，字段由调用方写回；补丁/布局刷新在
     /// DrawDisplaySection 末尾统一执行，避免回调读到旧开关状态。</summary>
     bool TogR(Tr.Key key, bool value) => Tog(Tr.Get(key), value);
+
+    void DrawGlobalColorsSection()
+    {
+        GUILayout.Space(4);
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        // 本节嵌在 DrawDisplaySub("jDisplay") 内，不能共用 _expandedDisplaySub：
+        // 换 key 写入会让父级判定自己收起，下一帧连本节一起消失。
+        bool expanded = _globalColorsFold;
+        if (GUILayout.Button($"{(expanded ? "▼" : "▷")} {Tr.Get(Tr.Key.GlobalColors)}", GUI.skin.label, GUILayout.ExpandWidth(true)))
+            _globalColorsFold = !expanded;
+        GUILayout.EndHorizontal();
+        if (expanded)
+        {
+            GUILayout.Space(3);
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(36);
+            GUILayout.BeginVertical();
+
+            GUILayout.Label(Tr.Get(Tr.Key.BaseColor), GUILayout.ExpandWidth(true));
+            _globalBaseColor.SettingGUI("Base", (Color)_globalBaseColor);
+
+            GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
+            for (int i = 0; i < _presetColors.Length; i++)
+            {
+                var c = _presetColors[i];
+                var prev = GUI.color; GUI.color = c;
+                if (GUILayout.Button(_presetLabels[i], GUILayout.Width(52)))
+                    _globalBaseColor.SetPreset(c);
+                GUI.color = prev;
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+            // 预览：对几个代表性渐变取 0 / 0.5 / 1 三点，展示“当前 -> 预览”色块
+            GUILayout.Label(Tr.Get(Tr.Key.Preview), GUILayout.ExpandWidth(true));
+            DrawGlobalColorPreviewRow("Progress", Colors.Progress);
+            DrawGlobalColorPreviewRow("Accuracy", Colors.Accuracy);
+            DrawGlobalColorPreviewRow("BPM", Colors.Bpm);
+            DrawGlobalColorPreviewRow("Combo", Colors.Combo);
+
+            GUILayout.Space(4);
+            HelpLabel(Tr.Get(Tr.Key.AllColorHint));
+
+            GUILayout.Space(6);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(Tr.Get(Tr.Key.ApplyToAll), GUILayout.Height(26)))
+            {
+                Color baseColor = _globalBaseColor;
+                Colors.ApplyHueToAll(baseColor);
+                Overlay.Instance?.RefreshAllTexts();
+                Loader.Log("Colors: Apply hue to all done");
+            }
+            if (GUILayout.Button(Tr.Get(Tr.Key.ResetAllColors), GUILayout.Height(26)))
+            {
+                Colors.ResetAll();
+                Overlay.Instance?.RefreshAllTexts();
+                Loader.Log("Colors: Reset all done");
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+        }
+    }
+
+    void DrawGlobalColorPreviewRow(string label, ColorPerDictionary dict)
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Label(label, GUILayout.Width(70));
+        float[] samples = [0f, 0.5f, 1f];
+        Color baseColor = _globalBaseColor;
+        foreach (float t in samples)
+        {
+            Color cur = dict.GetColor(t);
+            Color pre = dict.GetPreviewColor(t, baseColor);
+            var prev = GUI.color;
+            GUI.color = cur;
+            GUILayout.Label("■", GUILayout.Width(16));
+            GUI.color = Color.white;
+            GUILayout.Label("→", GUILayout.Width(12));
+            GUI.color = pre;
+            GUILayout.Label("■", GUILayout.Width(16));
+            GUI.color = prev;
+            GUILayout.Space(6);
+        }
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+    }
 
     void DrawDisplaySub(string key, string label, Action content)
     {
@@ -1108,11 +1200,15 @@ public class Settings
         fixedWidth = 18f, normal = new GUIStyleState { textColor = Color.white }, fontSize = 14, margin = new RectOffset(4, 2, 4, 4)
     };
     private static bool _generalFold, _displayFold, _fontFold, _alignFold, _textEffectsFold;
+    private static bool _globalColorsFold; // 独立状态：嵌套在"显示选项"内，见 DrawGlobalColorsSection 注释
     private static string _expandedAlign, _expandedDisplaySub, _expandedPos;
     private static string _expandedOrder, _expandedFontSlot;
     private static bool _labelsFold;
     private static bool _diagnosticsFold;
     private static float _diagnosticsCopiedUntil;
+    private static readonly ColorCache _globalBaseColor = new(Color.white);
+    private static readonly Color[] _presetColors = [Color.red, new Color(1, 0.5f, 0), Color.yellow, Color.green, new Color(0.34f, 0.8f, 1), Color.blue, new Color(0.6f, 0.2f, 1)];
+    private static readonly string[] _presetLabels = ["Red", "Orange", "Yellow", "Green", "Sky", "Blue", "Purple"];
 
     void DrawFontSlotSelector(FontSlot slot)
     {

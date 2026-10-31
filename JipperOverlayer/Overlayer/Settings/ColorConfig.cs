@@ -57,6 +57,66 @@ public class ColorConfig
         ProgressBarBackground.EnsureSorted(); ProgressBarBorder.EnsureSorted();
         JCombo.EnsureSorted(); JDeath.EnsureSorted(); JTiming.EnsureSorted(); JHitOffset.EnsureSorted();
     }
+
+    /// <summary>把所有颜色恢复到出厂默认值（保留 _original 指向默认值，后续 R 仍可回到同一值）。</summary>
+    public void ResetAll()
+    {
+        Progress.Reset(); Accuracy.Reset(); XAccuracy.Reset();
+        MusicTime.Reset(); MapTime.Reset(); XScore.Reset(); Best.Reset();
+        Bpm.Reset(); Combo.Reset();
+        ProgressBar.Reset(); ProgressBarBackground.Reset(); ProgressBarBorder.Reset();
+        JCombo.Reset(); JDeath.Reset(); JTiming.Reset(); JHitOffset.Reset();
+        JStateWaiting.Reset(); JStateAutoTile.Reset(); JStateAuto.Reset(); JStatePerfectPlay.Reset();
+        JStateComplete.Reset(); JStateClear.Reset(); JStateNoMiss.Reset(); JStatePerfectionist.Reset();
+        JFps.Reset(); JAuthor.Reset(); JStart.Reset();
+        EnsureSorted();
+        Save();
+    }
+
+    /// <summary>把 baseColor 的色相套用到所有已配置颜色（保留各自 S/V），用于“套用到所有”。</summary>
+    public void ApplyHueToAll(Color baseColor)
+    {
+        Progress.ApplyBaseColor(baseColor); Accuracy.ApplyBaseColor(baseColor); XAccuracy.ApplyBaseColor(baseColor);
+        MusicTime.ApplyBaseColor(baseColor); MapTime.ApplyBaseColor(baseColor); XScore.ApplyBaseColor(baseColor); Best.ApplyBaseColor(baseColor);
+        Bpm.ApplyBaseColor(baseColor); Combo.ApplyBaseColor(baseColor);
+        ProgressBar.ApplyBaseColor(baseColor); ProgressBarBackground.ApplyBaseColor(baseColor); ProgressBarBorder.ApplyBaseColor(baseColor);
+        JCombo.ApplyBaseColor(baseColor); JDeath.ApplyBaseColor(baseColor); JTiming.ApplyBaseColor(baseColor); JHitOffset.ApplyBaseColor(baseColor);
+        JStateWaiting.ApplyHue(baseColor); JStateAutoTile.ApplyHue(baseColor); JStateAuto.ApplyHue(baseColor); JStatePerfectPlay.ApplyHue(baseColor);
+        JStateComplete.ApplyHue(baseColor); JStateClear.ApplyHue(baseColor); JStateNoMiss.ApplyHue(baseColor); JStatePerfectionist.ApplyHue(baseColor);
+        JFps.ApplyHue(baseColor); JAuthor.ApplyHue(baseColor); JStart.ApplyHue(baseColor);
+        Save();
+    }
+
+    void BackfillOriginals()
+    {
+        ColorPerDictionary.Setup(ref Progress, [(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]);
+        ColorPerDictionary.Setup(ref Accuracy, [(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0));
+        ColorPerDictionary.Setup(ref XAccuracy, [(0.98f, Color.magenta), (1f, Color.white)], new Color(1, 0.8549f, 0));
+        ColorPerDictionary.Setup(ref MusicTime, [(1f, Color.white)]);
+        ColorPerDictionary.Setup(ref MapTime, [(1f, Color.white)]);
+        ColorPerDictionary.Setup(ref XScore, [(0.98f, Color.white), (1f, Color.white)], new Color(1, 0.8549f, 0));
+        ColorPerDictionary.Setup(ref Best, [(0f, Color.white), (1f, new Color(0.8745f, 0.7098f, 1f))]);
+        ColorPerDictionary.Setup(ref Bpm, [(0f, Color.white), (1f, Color.magenta)]);
+        ColorPerDictionary.Setup(ref Combo, [(0f, new Color(0.8745f, 0.7098f, 1f)), (1f, new Color(0.7176f, 0.3490f, 1f))]);
+        ColorPerDictionary.Setup(ref ProgressBar, [(1f, new Color(0.9216f, 0.8039f, 0.9765f))]);
+        ColorPerDictionary.Setup(ref ProgressBarBackground, [(1f, Color.white)]);
+        ColorPerDictionary.Setup(ref ProgressBarBorder, [(1f, Color.black)]);
+        ColorPerDictionary.Setup(ref JCombo, [(0f, Color.red), (0.2f, new Color(0.9882f, 1, 0.302f)), (1f, new Color(0.3725f, 1, 0.3119f))]);
+        ColorPerDictionary.Setup(ref JDeath, [(0f, Color.red), (1f, Color.green)]);
+        ColorPerDictionary.Setup(ref JTiming, [(0f, Color.red), (1f, Color.green)]);
+        ColorPerDictionary.Setup(ref JHitOffset, [(0f, Color.red), (1f, Color.green)]);
+        ColorCache.Setup(ref JStateWaiting, Color.white);
+        ColorCache.Setup(ref JStateAutoTile, new Color(1, 0.5f, 0));
+        ColorCache.Setup(ref JStateAuto, new Color(0.1058824f, 1f, 0));
+        ColorCache.Setup(ref JStatePerfectPlay, new Color(1, 0.8549f, 0));
+        ColorCache.Setup(ref JStateComplete, Color.white);
+        ColorCache.Setup(ref JStateClear, Color.white);
+        ColorCache.Setup(ref JStateNoMiss, Color.white);
+        ColorCache.Setup(ref JStatePerfectionist, Color.white);
+        ColorCache.Setup(ref JFps, Color.white);
+        ColorCache.Setup(ref JAuthor, Color.white);
+        ColorCache.Setup(ref JStart, Color.white);
+    }
     public Color GetAccuracyColor(float t, bool perfect) { return perfect ? new Color(1, 0.8549f, 0) : Accuracy.GetColor(t); }
     public Color GetXAccuracyColor(float t, bool perfect) { return perfect ? new Color(1, 0.8549f, 0) : XAccuracy.GetColor(t); }
     public Color GetMusicTimeColor(float t) { return MusicTime.GetColor(t); }
@@ -137,6 +197,7 @@ public class ColorConfig
         if (cc == null) throw new InvalidDataException("colors.json is empty");
         cc.EnsureSorted();
         cc.EnsureDefaults();
+        cc.BackfillOriginals();
         // alpha==0 的兼容修复只针对没有 schema 的旧文件执行一次；迁移后
         // 用户明确设置的透明色会正常持久化。
         if (cc.SchemaVersion < 1) { cc.MigrateLegacyAlphaDefaults(); cc.SchemaVersion = 1; cc.Save(); }

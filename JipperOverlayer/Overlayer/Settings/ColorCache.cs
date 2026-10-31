@@ -16,11 +16,42 @@ public class ColorCache {
     [JsonIgnore] public string aString;
     [JsonIgnore] public string oldHexString;
     [JsonIgnore] public string hexString;
+    [JsonIgnore] private Color _originalColor = Color.white;
 
-    public ColorCache() { }
+    public ColorCache() { _originalColor = Color.white; }
 
     public ColorCache(Color color) {
         r = color.r; g = color.g; b = color.b; a = color.a;
+        _originalColor = color;
+    }
+
+    public void ApplyHue(Color baseColor) {
+        Color newColor = ApplyHuePreview(baseColor);
+        r = newColor.r; g = newColor.g; b = newColor.b;
+        rString = gString = bString = null;
+        hexString = GetHexString(); oldHexString = hexString;
+    }
+
+    public Color ApplyHuePreview(Color baseColor) {
+        Color cur = this;
+        Color.RGBToHSV(cur, out _, out float s, out float v);
+        Color.RGBToHSV(baseColor, out float h, out _, out _);
+        Color newColor = Color.HSVToRGB(h, s, v);
+        newColor.a = a;
+        return newColor;
+    }
+
+    public void SetPreset(Color color) {
+        r = color.r; g = color.g; b = color.b; a = color.a;
+        rString = gString = bString = aString = null;
+        hexString = GetHexString(); oldHexString = hexString;
+    }
+
+    public void Reset() => SetPreset(_originalColor);
+
+    public static void Setup(ref ColorCache cache, Color color) {
+        if (cache == null) cache = new ColorCache(color);
+        else cache._originalColor = color;
     }
 
     public bool SettingGUI(string label, Color defaultColor) {

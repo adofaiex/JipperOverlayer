@@ -15,6 +15,12 @@ public static class FontManager
         public string name;
         public TMP_FontAsset font;
         public string sourceFontName;
+        /// <summary>模组自己创建/拥有的字体资产（可安全做字号缩放与字形烘焙）。
+        /// 直接借用游戏共享 fontTMP 的条目为 false——改它的 faceInfo 或往图集塞字形会影响游戏 UI。
+        /// / A font asset created/owned by the mod (safe to size-scale and bake glyphs into).
+        /// An entry that borrows the game's shared fontTMP is false — mutating its faceInfo or
+        /// atlas would affect the game's own UI.</summary>
+        public bool Owned = true;
     }
 
     public static List<FontEntry> FontList;
@@ -58,6 +64,8 @@ public static class FontManager
         }
         catch (Exception e) { Loader.Warning($"CustomFonts: {e.Message}"); }
 
+        AddAdofaiFontEntry();
+
         FontNames = new string[FontList.Count];
         for (int i = 0; i < FontList.Count; i++)
             FontNames[i] = FontList[i].name;
@@ -77,7 +85,7 @@ public static class FontManager
         {
             foreach (var entry in FontList)
             {
-                if (entry.font == null || entry.font == cjk) continue;
+                if (entry.font == null || entry.font == cjk || !entry.Owned) continue;
                 entry.font.fallbackFontAssetTable ??= new List<TMP_FontAsset>();
                 if (!entry.font.fallbackFontAssetTable.Contains(cjk))
                     entry.font.fallbackFontAssetTable.Add(cjk);
@@ -86,6 +94,66 @@ public static class FontManager
 
         Loader.Log($"FontManager: {FontList.Count} fonts");
         BakeOverlayGlyphs();
+        MatchFontSizes();
+    }
+
+    static void AddAdofaiFontEntry()
+    {
+        try
+        {
+            var tmp = RDString.fontData.fontTMP;
+            if (tmp == null) return;
+            foreach (var e in FontList)
+                if (e.font == tmp || e.name == "ADOFAI Font") return; // 同资产或同名行都跳过，避免选择器出现两行一样的名字
+            FontList.Add(new FontEntry { name = "ADOFAI Font", font = tmp, sourceFontName = "ADOFAI Font", Owned = false });
+            Loader.Log("FontManager: added ADOFAI Font (borrowed, not owned)");
+        }
+        catch (Exception e) { Loader.Warning($"FontManager: ADOFAI font unavailable: {e.Message}"); }
+    }
+
+    static void MatchFontSizes()
+    {
+        // r136 的 TextCore 没有 FaceInfo 属性，直接访问会 MissingMethod/Property；
+        // 用版本哨兵跳过，旧版本不做字号匹配。
+        if (!VersionSafe.IsV141OrLater) return;
+        var reference = AssetLoader.FontAsset;
+        if (reference == null) return;
+        float refRatio;
+        try { refRatio = GetCapHeightRatio(reference); } catch { return; }
+        if (refRatio <= 0) return;
+        float refScale;
+        try { refScale = reference.faceInfo.scale; } catch { refScale = 1f; }
+        if (refScale <= 0) refScale = 1f;
+
+        foreach (var entry in FontList)
+        {
+            if (entry == null || entry.font == null || !entry.Owned) continue;
+            if (entry.font == reference) continue;
+            float cap;
+            try { cap = GetCapHeightRatio(entry.font); } catch { continue; }
+            if (cap <= 0) continue;
+            float target = refRatio * refScale / cap;
+            target = Mathf.Clamp(target, 0.5f, 2f);
+            try
+            {
+                var fi = entry.font.faceInfo;
+                if (Math.Abs(fi.scale - target) < 0.001f) continue;
+                fi.scale = target;
+                entry.font.faceInfo = fi;
+                Loader.Log($"FontManager: scaled '{entry.name}' x{target:F3} (cap {cap:F4} -> ref {refRatio:F4})");
+            }
+            catch (Exception e) { Loader.Warning($"FontManager: scale '{entry.name}' failed: {e.Message}"); }
+        }
+    }
+
+    static float GetCapHeightRatio(TMP_FontAsset font)
+    {
+        var fi = font.faceInfo;
+        if (fi.pointSize <= 0) return 0;
+        float cap = fi.capLine;
+        if (cap <= 0 && font.HasCharacter('H', false, true) && font.characterLookupTable.TryGetValue('H', out var ch) && ch?.glyph != null)
+            cap = ch.glyph.metrics.horizontalBearingY;
+        return cap > 0 ? cap / fi.pointSize : 0;
     }
 
     static void ScanCustomDir(string dir, string pattern)
@@ -160,7 +228,8 @@ public static class FontManager
             int baked = 0;
             if (FontList != null)
                 foreach (var entry in FontList)
-                    baked += BakeFont(entry.font, chars, method);
+                    if (entry.Owned) // 借用的游戏共享字体不烘焙：往它图集里塞字形会影响游戏自身 UI
+                        baked += BakeFont(entry.font, chars, method);
             try { baked += BakeFont(RDConstants.data.chineseFontTMPro, chars, method); } catch { } // shared CJK fallback
             Loader.Log($"FontManager: pre-baked {chars.Length} chars into {baked} font(s)");
         }
