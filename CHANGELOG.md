@@ -8,6 +8,7 @@
 
 ### Bug Fixes
 
+- **XScore perfect colour no longer changes with Apply To All**: XScore now uses the same fixed settings gold as every other perfect readout, and the global hue action no longer rewrites its hidden `PerfectColor`; the visible gradient stops still follow the chosen base hue
 - **Forward combo title sat too low**: the non-reversed layout placed `ComboTitle` at a hard-coded `43.505`, which is half the value text height only at the reference's `fontSize` 78 — with the default `ComboValFontSize` 108 the title was ~17px short of the number's top edge and sank into the digits. The offset is now half the value text's actual height, derived from the live font size (measured once from the TMP preferred height, with the reference ratio as a fallback), so it tracks any `ComboValFontSize` and is re-applied when the font size setting changes; the bump animation also follows the growing font instead of a fixed `+15`. The reversed layout is untouched
 
 ## v1.1.7.1 — 2026.10.11

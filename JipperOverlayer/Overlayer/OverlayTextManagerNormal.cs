@@ -98,8 +98,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         SetDualText(s.XScorePotentialType, overlay.ExtendedOverlay?.XScoreText, overlay.ExtendedOverlay?.PotentialXScoreText, "XScore",
             AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType),
             AccuracyMath.GetXScoreText(potentialX, potentialTotal, s.XScoreTextType, potential: true),
-            t => t.color = s.Colors.XScore.GetColor(soFarMax == 0 ? 1 : (float)x / soFarMax),
-            t => t.color = s.Colors.XScore.GetColor(potentialTotal == 0 ? 1 : (float)potentialX / potentialTotal));
+            t => t.color = s.Colors.GetXScoreColor(soFarMax == 0 ? 1 : (float)x / soFarMax),
+            t => t.color = s.Colors.GetXScoreColor(potentialTotal == 0 ? 1 : (float)potentialX / potentialTotal));
     }
 
     public void UpdateProgress(Overlay overlay)

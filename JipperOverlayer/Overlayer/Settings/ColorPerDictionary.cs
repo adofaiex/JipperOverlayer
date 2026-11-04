@@ -249,10 +249,10 @@ public class ColorPerDictionary {
         SortList();
     }
 
-    public void ApplyBaseColor(Color baseColor)
+    public void ApplyBaseColor(Color baseColor, bool includePerfectColor = true)
     {
         foreach (var c in List) c.ApplyHue(baseColor);
-        PerfectColor?.ApplyHue(baseColor);
+        if (includePerfectColor) PerfectColor?.ApplyHue(baseColor);
         InvalidateHexLut();
     }
 

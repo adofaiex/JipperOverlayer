@@ -45,6 +45,10 @@ public class ColorConfig
     public Color GetProgressColor(float t) { return Progress.GetColor(t); }
     public string GetProgressHex(float t, bool alpha = false) { return Progress.GetHex(t, alpha); }
     public string GetBpmHex(float t, bool alpha = false) { return Bpm.GetHex(t, alpha); }
+    public Color GetXScoreColor(float t)
+        => t >= 1 ? SettingsGold : XScore.GetColor(t);
+    public string GetXScoreHex(float t, bool alpha = true)
+        => t >= 1 ? ColorUtility.ToHtmlStringRGBA(SettingsGold) : XScore.GetHex(t, alpha);
     public string GetAccuracyHex(float t, bool perfect, bool alpha = true)
         => perfect ? ColorUtility.ToHtmlStringRGBA(SettingsGold) : Accuracy.GetHex(t, alpha);
     public string GetXAccuracyHex(float t, bool perfect, bool alpha = true)
@@ -77,7 +81,7 @@ public class ColorConfig
     public void ApplyHueToAll(Color baseColor)
     {
         Progress.ApplyBaseColor(baseColor); Accuracy.ApplyBaseColor(baseColor); XAccuracy.ApplyBaseColor(baseColor);
-        MusicTime.ApplyBaseColor(baseColor); MapTime.ApplyBaseColor(baseColor); XScore.ApplyBaseColor(baseColor); Best.ApplyBaseColor(baseColor);
+        MusicTime.ApplyBaseColor(baseColor); MapTime.ApplyBaseColor(baseColor); XScore.ApplyBaseColor(baseColor, includePerfectColor: false); Best.ApplyBaseColor(baseColor);
         Bpm.ApplyBaseColor(baseColor); Combo.ApplyBaseColor(baseColor);
         ProgressBar.ApplyBaseColor(baseColor); ProgressBarBackground.ApplyBaseColor(baseColor); ProgressBarBorder.ApplyBaseColor(baseColor);
         JCombo.ApplyBaseColor(baseColor); JDeath.ApplyBaseColor(baseColor); JTiming.ApplyBaseColor(baseColor); JHitOffset.ApplyBaseColor(baseColor);

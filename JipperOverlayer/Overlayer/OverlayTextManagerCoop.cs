@@ -258,7 +258,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             potentialTotal = soFarMax + remaining * AccuracyMath.XPerfectValue;
             potentialX = x + remaining * AccuracyMath.XPerfectValue;
         }
-        string hex = s.Colors.XScore.GetHex(soFarMax == 0 ? 1 : (float)x / soFarMax);
+        string hex = s.Colors.GetXScoreHex(soFarMax == 0 ? 1 : (float)x / soFarMax);
         var type = s.XScorePotentialType;
         _sb.Clear();
         _sb.Append(" | <color=#");
