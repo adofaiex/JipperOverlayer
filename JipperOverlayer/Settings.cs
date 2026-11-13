@@ -95,6 +95,35 @@ public class Settings
         Main, BPM, Judgement, ComboTitle, ComboVal, Timing, Attempt
     }
 
+    /// <summary>各字体槽的独立文本特效（阴影/描边）。索引 = FontSlot 序号。
+    /// 未开启 Override 的槽位沿用全局 TextEffects，与旧版观感完全一致。</summary>
+    public SlotTextEffectConfig[] SlotTextEffects = CreateDefaultSlotTextEffects();
+
+    static SlotTextEffectConfig[] CreateDefaultSlotTextEffects()
+    {
+        int n = Enum.GetValues(typeof(FontSlot)).Length;
+        var arr = new SlotTextEffectConfig[n];
+        for (int i = 0; i < n; i++) arr[i] = new SlotTextEffectConfig();
+        return arr;
+    }
+
+    /// <summary>取该槽位的特效配置对象（可能未开启 Override）。</summary>
+    public SlotTextEffectConfig GetSlotTextEffect(FontSlot slot)
+    {
+        var arr = SlotTextEffects;
+        int idx = (int)slot;
+        if (arr == null || idx < 0 || idx >= arr.Length) return null;
+        return arr[idx] ??= new SlotTextEffectConfig();
+    }
+
+    /// <summary>该槽位实际生效的特效：开了 Override 用自己的，否则用全局。</summary>
+    public TextEffectConfig GetEffectForSlot(FontSlot slot)
+    {
+        var sc = GetSlotTextEffect(slot);
+        if (sc != null && sc.Override && sc.Effect != null) return sc.Effect;
+        return TextEffects;
+    }
+
     public int GetRawSlotFontIndex(FontSlot slot) => slot switch
     {
         FontSlot.Main => MainFontIndex,
@@ -954,12 +983,24 @@ public class Settings
             _textEffectsFold = !_textEffectsFold;
         if (!_textEffectsFold) return;
 
-        var fx = TextEffects;
+        bool changed = DrawEffectControls(TextEffects, 16);
+
+        if (changed)
+        {
+            Save();
+            ShadowManager.ClearCache();
+            Overlay.Instance?.ApplyFontToAll();
+        }
+    }
+
+    /// <summary>阴影/描边控件（全局与各槽位独立特效共用）。indent 为左侧缩进。</summary>
+    bool DrawEffectControls(TextEffectConfig fx, int indent)
+    {
         bool changed = false;
 
         // Shadow
         GUILayout.BeginHorizontal();
-        GUILayout.Space(16);
+        GUILayout.Space(indent);
         bool shadowOn = GUILayout.Toggle(fx.ShadowEnabled, Tr.Get(Tr.Key.TextEffectShadow), GUILayout.ExpandWidth(true));
         if (shadowOn != fx.ShadowEnabled) { fx.ShadowEnabled = shadowOn; changed = true; }
         GUILayout.EndHorizontal();
@@ -974,7 +1015,7 @@ public class Settings
 
         // Outline
         GUILayout.BeginHorizontal();
-        GUILayout.Space(16);
+        GUILayout.Space(indent);
         bool outlineOn = GUILayout.Toggle(fx.OutlineEnabled, Tr.Get(Tr.Key.TextEffectOutline), GUILayout.ExpandWidth(true));
         if (outlineOn != fx.OutlineEnabled) { fx.OutlineEnabled = outlineOn; changed = true; }
         GUILayout.EndHorizontal();
@@ -986,7 +1027,47 @@ public class Settings
             changed |= DrawColorCacheField(Tr.Get(Tr.Key.TextEffectOutlineColor), fx.OutlineColor);
         }
 
-        if (changed)
+        return changed;
+    }
+
+    /// <summary>字体槽的独立文本特效：默认沿用全局，开启后该槽位单独配置阴影/描边。
+    /// 开启时从全局复制一份作为起点，避免"打开就变成另一套观感"。</summary>
+    void DrawSlotEffectPanel(FontSlot slot)
+    {
+        var sc = GetSlotTextEffect(slot);
+        if (sc == null) return;
+
+        GUILayout.Space(3);
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(20);
+        bool now = GUILayout.Toggle(sc.Override, Tr.Get(Tr.Key.TextEffectPerSlot), GUILayout.ExpandWidth(true));
+        GUILayout.EndHorizontal();
+
+        if (now != sc.Override)
+        {
+            sc.Override = now;
+            // 首次开启：从全局复制一份当前配置作为起点；关闭时保留配置便于再次打开。
+            if (now) sc.Effect = TextEffects?.Clone() ?? new TextEffectConfig();
+            Save();
+            ShadowManager.ClearCache();
+            Overlay.Instance?.ApplyFontToAll();
+        }
+
+        if (!sc.Override) return;
+
+        // 继承全局的快捷操作：把全局设置搬过来
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(20);
+        if (GUILayout.Button(Tr.Get(Tr.Key.TextEffectCopyGlobal), GUILayout.Width(180), GUILayout.Height(20)))
+        {
+            sc.Effect = TextEffects?.Clone() ?? new TextEffectConfig();
+            Save();
+            ShadowManager.ClearCache();
+            Overlay.Instance?.ApplyFontToAll();
+        }
+        GUILayout.EndHorizontal();
+
+        if (DrawEffectControls(sc.Effect, 36))
         {
             Save();
             ShadowManager.ClearCache();
@@ -1237,6 +1318,9 @@ public class Settings
         GUILayout.BeginHorizontal();
         GUILayout.Space(30);
         GUILayout.BeginVertical();
+
+        // 独立文本特效放在字体列表之前：展开就能看到，不用滚过一长串字体。
+        DrawSlotEffectPanel(slot);
 
         // "Use Global" option
         {
@@ -1580,6 +1664,22 @@ public class Settings
         if (s.TextEffects == null) { s.TextEffects = new TextEffectConfig(); changed = true; }
         if (s.TextEffects.ShadowColor == null) { s.TextEffects.ShadowColor = new ColorCache(new Color(0, 0, 0, 0.5f)); changed = true; }
         if (s.TextEffects.OutlineColor == null) { s.TextEffects.OutlineColor = new ColorCache(Color.black); changed = true; }
+        // 各槽位的独立文本特效：旧配置没有这个数组，按「全部沿用全局」补齐，
+        // 保证升级后观感不变（旧版本没有的字段补成 null 也要填默认）。
+        int slotCount = Enum.GetValues(typeof(FontSlot)).Length;
+        if (s.SlotTextEffects == null || s.SlotTextEffects.Length != slotCount)
+        {
+            s.SlotTextEffects = CreateDefaultSlotTextEffects();
+            changed = true;
+        }
+        for (int i = 0; i < s.SlotTextEffects.Length; i++)
+        {
+            if (s.SlotTextEffects[i] == null) { s.SlotTextEffects[i] = new SlotTextEffectConfig(); changed = true; }
+            var e = s.SlotTextEffects[i].Effect;
+            if (e == null) { s.SlotTextEffects[i].Effect = new TextEffectConfig(); changed = true; continue; }
+            if (e.ShadowColor == null) { e.ShadowColor = new ColorCache(new Color(0, 0, 0, 0.5f)); changed = true; }
+            if (e.OutlineColor == null) { e.OutlineColor = new ColorCache(Color.black); changed = true; }
+        }
         return changed;
     }
 

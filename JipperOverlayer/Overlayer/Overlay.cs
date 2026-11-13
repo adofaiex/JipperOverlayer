@@ -447,6 +447,9 @@ public class Overlay
         if (MapTimeText) MapTimeText.font = mainFont;
         if (CheckpointText) CheckpointText.font = mainFont;
         if (BestText) BestText.font = mainFont;
+        // 打击误差文本此前漏在这里：创建时写死内嵌字体，之后从未被赋过字体，
+        // 改全局字体与各字体槽都不生效。它的字号走 MainFontSize，同属主区域。
+        if (HitOffsetText) HitOffsetText.font = mainFont;
 
         var bpmFont = FontManager.GetFont(s.GetFontIndexForSlot(Settings.FontSlot.BPM));
         if (BPMText) BPMText.font = bpmFont;
@@ -468,16 +471,34 @@ public class Overlay
 
         foreach (var t in ExtraTexts)
             if (t) t.font = mainFont;
-        foreach (var t in new[] { ProgressText, AccuracyText, XAccuracyText, TimeText, MapTimeText, CheckpointText, BestText,
-            BPMText, TimingScaleText, AttemptText, HitOffsetText })
-        { if (t) ShadowManager.ApplyShadow(t); }
-        foreach (var jt in JudgementTexts)
-        { if (jt) ShadowManager.ApplyShadow(jt); }
-        foreach (var t in ExtraTexts)
-        { if (t) ShadowManager.ApplyShadow(t); }
-        if (ComboTitle) ShadowManager.ApplyShadow(ComboTitle);
-        if (ComboText) ShadowManager.ApplyShadow(ComboText);
+
+        // 文本特效按槽位分别应用：各槽位可开启独立特效（阴影/描边），
+        // 未开启的沿用全局设置。同字体的不同槽位会拿到不同材质
+        // （ShadowManager 的缓存键含特效参数）。
+        ApplySlotEffects(Settings.FontSlot.Main, new[] { ProgressText, AccuracyText, XAccuracyText, TimeText,
+            MapTimeText, CheckpointText, BestText, HitOffsetText });
+        ApplySlotEffects(Settings.FontSlot.BPM, new[] { BPMText });
+        ApplySlotEffects(Settings.FontSlot.Judgement, JudgementTexts);
+        ApplySlotEffects(Settings.FontSlot.ComboTitle, new[] { ComboTitle });
+        ApplySlotEffects(Settings.FontSlot.ComboVal, new[] { ComboText });
+        ApplySlotEffects(Settings.FontSlot.Timing, new[] { TimingScaleText });
+        ApplySlotEffects(Settings.FontSlot.Attempt, new[] { AttemptText });
+        // 扩展文本（FPS/作者/状态/死亡/开始/时机/XScore/潜力值等）跟随主区域。
+        ApplySlotEffects(Settings.FontSlot.Main, ExtraTexts);
+
         ApplyFontSizes();
+    }
+
+    /// <summary>把该槽位的特效配置应用到位下所有文本。</summary>
+    void ApplySlotEffects(Settings.FontSlot slot, System.Collections.Generic.IReadOnlyList<TMPro.TextMeshProUGUI> texts)
+    {
+        if (texts == null) return;
+        var fx = Main.Settings?.GetEffectForSlot(slot);
+        for (int i = 0; i < texts.Count; i++)
+        {
+            var t = texts[i];
+            if (t) ShadowManager.ApplyShadow(t, fx);
+        }
     }
 
     public void ApplyFontSizes()
