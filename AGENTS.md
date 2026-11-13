@@ -8,7 +8,7 @@ ADOFAI 游戏内 overlay 模组（C#，双加载器：Unity Mod Manager + MelonL
 - 为 overlay 文本与数值之间的分隔符新增逐项自定义（20 个文本项独立配置）；
 - 修复多人模式下 XScore 的 `MAX-n` 与潜力值比原生结算差 2 分的问题
   （改用「已判定计分格数 × 2」作分母，参照 JipperResourcePack 的 JRP 口径）。
-- 已完成：待 push。
+- 已完成：commit `374d30b` 已推送到 origin/master（11 个文件，中文 commit message）。
 
 ## 事实锚点（2026-09-18 核实）
 - `CHANGELOG.md` 共 324 行，顶部为 `## Unreleased`。以实际 read 结果为准。
