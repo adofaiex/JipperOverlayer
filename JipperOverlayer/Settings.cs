@@ -1365,20 +1365,22 @@ public class Settings
 
         GUILayout.Space(5);
 
+        HelpLabel(Tr.Get(Tr.Key.SeparatorHint));
+
         GUILayout.Label("  -- Standard --");
-        DrawLabelField("Progress", ref Labels.Progress);
-        DrawLabelField("Accuracy", ref Labels.Accuracy);
-        DrawLabelField("XAccuracy", ref Labels.XAccuracy);
-        DrawLabelField("Music Time", ref Labels.MusicTime);
-        DrawLabelField("Map Time", ref Labels.MapTime);
-        DrawLabelField("CheckPoint", ref Labels.Checkpoint);
-        DrawLabelField("Best", ref Labels.Best);
-        DrawLabelField("TBPM", ref Labels.TBPM);
-        DrawLabelField("CBPM", ref Labels.CBPM);
-        DrawLabelField("KPS", ref Labels.KPS);
+        DrawLabelField("Progress", ref Labels.Progress, ref Labels.ProgressSeparator);
+        DrawLabelField("Accuracy", ref Labels.Accuracy, ref Labels.AccuracySeparator);
+        DrawLabelField("XAccuracy", ref Labels.XAccuracy, ref Labels.XAccuracySeparator);
+        DrawLabelField("Music Time", ref Labels.MusicTime, ref Labels.MusicTimeSeparator);
+        DrawLabelField("Map Time", ref Labels.MapTime, ref Labels.MapTimeSeparator);
+        DrawLabelField("CheckPoint", ref Labels.Checkpoint, ref Labels.CheckpointSeparator);
+        DrawLabelField("Best", ref Labels.Best, ref Labels.BestSeparator);
+        DrawLabelField("TBPM", ref Labels.TBPM, ref Labels.TBPMSeparator);
+        DrawLabelField("CBPM", ref Labels.CBPM, ref Labels.CBPMSeparator);
+        DrawLabelField("KPS", ref Labels.KPS, ref Labels.KPSSeparator);
         DrawLabelField("Attempt", ref Labels.Attempt);
         DrawLabelField("Full Attempt", ref Labels.FullAttempt);
-        DrawLabelField("Timing Scale", ref Labels.TimingScale);
+        DrawLabelField("Timing Scale", ref Labels.TimingScale, ref Labels.TimingScaleSeparator);
         DrawLabelField("XPerfect", ref Labels.XPerfectLabel);
         DrawLabelField("Perfect", ref Labels.PerfectLabel);
         DrawLabelField("Great", ref Labels.GreatLabel);
@@ -1388,13 +1390,13 @@ public class Settings
 
         GUILayout.Space(3);
         GUILayout.Label("  -- ExtendedOverlay --");
-        DrawLabelField("FPS", ref Labels.FPS);
-        DrawLabelField("Author", ref Labels.Author);
-        DrawLabelField("State", ref Labels.State);
-        DrawLabelField("Death", ref Labels.Death);
-        DrawLabelField("Start", ref Labels.Start);
-        DrawLabelField("Timing", ref Labels.Timing);
-        DrawLabelField("Hit Offset", ref Labels.HitOffset);
+        DrawLabelField("FPS", ref Labels.FPS, ref Labels.FPSSeparator);
+        DrawLabelField("Author", ref Labels.Author, ref Labels.AuthorSeparator);
+        DrawLabelField("State", ref Labels.State, ref Labels.StateSeparator);
+        DrawLabelField("Death", ref Labels.Death, ref Labels.DeathSeparator);
+        DrawLabelField("Start", ref Labels.Start, ref Labels.StartSeparator);
+        DrawLabelField("Timing", ref Labels.Timing, ref Labels.TimingSeparator);
+        DrawLabelField("Hit Offset", ref Labels.HitOffset, ref Labels.HitOffsetSeparator);
 
         GUILayout.Space(3);
         GUILayout.Label("  -- State Texts --");
@@ -1408,6 +1410,11 @@ public class Settings
         DrawLabelField("Perfectionist", ref Labels.StatePerfectionist);
         DrawLabelField("Suffix", ref Labels.StateSuffix);
         DrawLabelField("Mid Start", ref Labels.StateMidStart);
+
+        GUILayout.Space(3);
+        GUILayout.Label("  -- Separator only --");
+        DrawSeparatorField("XScore", ref Labels.XScoreSeparator);
+        DrawSeparatorField("Timing Window", ref Labels.TimingWindowSeparator);
 
         if (GUI.changed)
         {
@@ -1427,6 +1434,28 @@ public class Settings
         GUILayout.Space(20);
         GUILayout.Label(label, GUILayout.Width(100));
         value = GUILayout.TextField(value, GUILayout.ExpandWidth(true));
+        GUILayout.EndHorizontal();
+    }
+
+    /// <summary>带分隔符输入框的标签行：右侧窄框 = 该项标签与数值之间的分隔符（见 SeparatorHint）。</summary>
+    static void DrawLabelField(string label, ref string value, ref string separator)
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(20);
+        GUILayout.Label(label, GUILayout.Width(100));
+        value = GUILayout.TextField(value, GUILayout.ExpandWidth(true));
+        separator = GUILayout.TextField(separator ?? "", GUILayout.Width(64));
+        GUILayout.EndHorizontal();
+    }
+
+    /// <summary>没有可编辑标签行的项（XScore/判定时间窗）只显示分隔符输入框。</summary>
+    static void DrawSeparatorField(string label, ref string separator)
+    {
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(20);
+        GUILayout.Label(label, GUILayout.Width(100));
+        separator = GUILayout.TextField(separator ?? "", GUILayout.Width(64));
+        GUILayout.FlexibleSpace();
         GUILayout.EndHorizontal();
     }
 

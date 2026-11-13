@@ -38,6 +38,29 @@ public class LabelConfig
     /// <summary>判定条旁的本次敲击误差标签（issue #6）。</summary>
     public string HitOffset = "Hit Offset";
 
+    // ==== 标签与数值之间的分隔符（每个文本项独立，默认沿用历史样式） ====
+    public string ProgressSeparator = " | ";
+    public string AccuracySeparator = " | ";
+    public string XAccuracySeparator = " | ";
+    public string XScoreSeparator = " | ";
+    public string MusicTimeSeparator = " | ";
+    public string MapTimeSeparator = " | ";
+    public string CheckpointSeparator = " | ";
+    public string BestSeparator = " | ";
+    public string TBPMSeparator = " | ";
+    public string CBPMSeparator = " | ";
+    public string KPSSeparator = " | ";
+    public string TimingScaleSeparator = " - ";
+    public string FPSSeparator = " | ";
+    public string AuthorSeparator = " | ";
+    public string StateSeparator = " | ";
+    public string DeathSeparator = " | ";
+    public string StartSeparator = " | ";
+    public string TimingSeparator = " | ";
+    public string HitOffsetSeparator = " - ";
+    /// <summary>判定时间窗 4 行（XPerfect/Perfect/Great/Good）共用的分隔符。</summary>
+    public string TimingWindowSeparator = " | ";
+
     // State text (ExtendedOverlay)
     public string StateWaiting = "Waiting";
     public string StateAutoTile = "Auto Tile";
@@ -74,7 +97,36 @@ public class LabelConfig
     }
 
     static LabelConfig ReadLabelFile(string path)
-        => JsonConvert.DeserializeObject<LabelConfig>(File.ReadAllText(path)) ?? new LabelConfig();
+    {
+        var config = JsonConvert.DeserializeObject<LabelConfig>(File.ReadAllText(path)) ?? new LabelConfig();
+        config.NormalizeSeparators();
+        return config;
+    }
+
+    /// <summary>分隔符字段为 null（旧配置/手改 JSON 缺字段）时回填默认，避免文本拼接出现空引用。</summary>
+    public void NormalizeSeparators()
+    {
+        ProgressSeparator ??= " | ";
+        AccuracySeparator ??= " | ";
+        XAccuracySeparator ??= " | ";
+        XScoreSeparator ??= " | ";
+        MusicTimeSeparator ??= " | ";
+        MapTimeSeparator ??= " | ";
+        CheckpointSeparator ??= " | ";
+        BestSeparator ??= " | ";
+        TBPMSeparator ??= " | ";
+        CBPMSeparator ??= " | ";
+        KPSSeparator ??= " | ";
+        TimingScaleSeparator ??= " - ";
+        FPSSeparator ??= " | ";
+        AuthorSeparator ??= " | ";
+        StateSeparator ??= " | ";
+        DeathSeparator ??= " | ";
+        StartSeparator ??= " | ";
+        TimingSeparator ??= " | ";
+        HitOffsetSeparator ??= " - ";
+        TimingWindowSeparator ??= " | ";
+    }
 
     public static LabelConfig GetPreset(Language language) => language switch
     {

@@ -60,6 +60,7 @@ public static class Tr
         OpenLayoutEditor,
         LayoutEditorTitle, LayoutEditorHint, LayoutEditorSnap, LayoutEditorNotPlaying,
         LayoutEditorExit, LayoutEditorHidden, LayoutEditorUndo, LayoutEditorResetAll, LayoutEditorSave,
+        SeparatorHint,
         Count
     }
 
@@ -121,7 +122,8 @@ public static class Tr
              "Open Layout Editor",
              "Layout Editor", "Click an element to select it, then drag to move. Alt = no snapping, Shift+Arrow = 10px.",
              "Snap to edges / centers", "Enter a level first to edit the layout.",
-             "Exit editor", "(hidden)", "Undo", "Reset all", "Save" ],
+             "Exit editor", "(hidden)", "Undo", "Reset all", "Save",
+             "Small box right of each label row = separator between that label and its value. Default ' | '; Timing Scale / Hit Offset default ' - '. Empty = none." ],
 
         /* 1  Korean */ [ "크기", "진행도 표시", "정확도 표시", "X정확도 표시",
             "음악 시간 표시", "맵 시간 표시", "음악 없을 때 맵 시간",
@@ -179,7 +181,8 @@ public static class Tr
              "레이아웃 편집기 열기",
              "레이아웃 편집기", "요소를 클릭해 선택하고 드래그해 이동. Alt = 스냅 해제, Shift+화살표 = 10px.",
              "가장자리/중앙에 스냅", "레이아웃을 편집하려면 먼저 레벨에 진입하세요.",
-             "편집기 닫기", "(숨김)", "실행 취소", "전체 초기화", "저장" ],
+             "편집기 닫기", "(숨김)", "실행 취소", "전체 초기화", "저장",
+             "레이블 행 오른쪽 작은 입력칸 = 레이블과 값 사이 구분 기호. 기본 ' | ', 판정 스케일/타격 오차는 ' - '. 비우면 없음." ],
 
         /* 2  Chinese */ [ "大小", "显示进度", "显示准确率", "显示X准确率",
             "显示音乐时间", "显示地图时间", "无音乐时显示地图时间",
@@ -237,7 +240,8 @@ public static class Tr
              "打开布局编辑器",
              "布局编辑器", "点击元素选中，拖动即可移动。Alt = 关闭吸附，Shift+方向键 = 10px。",
              "吸附到边缘/中心", "请先进入关卡再编辑布局。",
-             "退出编辑器", "（隐藏）", "撤销", "全部重置", "保存" ],
+             "退出编辑器", "（隐藏）", "撤销", "全部重置", "保存",
+             "每行右侧的小输入框 = 该项标签与数值之间的分隔符。默认 ' | '；判定区间/打击误差默认 ' - '；留空则不显示。" ],
     ];
 
     public static string Get(Key key)

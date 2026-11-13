@@ -178,7 +178,8 @@ public class ExtendedOverlayModule
         Overlay._textSb.Clear();
         Overlay._textSb.Append("<color=white>");
         Overlay._textSb.Append(s.Labels.FPS);
-        Overlay._textSb.Append(" |</color> ");
+        Overlay._textSb.Append(s.Labels.FPSSeparator);
+        Overlay._textSb.Append("</color>");
         Overlay._textSb.Append((1f / deltaTime).ToString($"F{DecimalPrecision}"));
         FPSText.text = Overlay._textSb.ToString();
         FPSText.color = s.Colors.JFps;
@@ -196,7 +197,7 @@ public class ExtendedOverlayModule
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
         }
         string author = _authorProperty?.GetValue(ld) as string ?? "";
-        AuthorText.text = $"<color=white>{s.Labels.Author} |</color> {author}";
+        AuthorText.text = $"<color=white>{s.Labels.Author}{s.Labels.AuthorSeparator}</color>{author}";
     }
 
     public void UpdateColors()
@@ -227,7 +228,7 @@ public class ExtendedOverlayModule
     {
         var s = Main.Settings;
         if (!s.ShowStart || !_overlay.GameObject.activeSelf || _overlay.StartTile != GameRefs.CurrentSeqID) return;
-        StartText.text = $"<color=white>{s.Labels.Start} |</color> {_overlay.StartTile} ({Math.Round(_overlay.OverlayTextManager.GetProgress() * 100, DecimalPrecision)}%)";
+        StartText.text = $"<color=white>{s.Labels.Start}{s.Labels.StartSeparator}</color>{_overlay.StartTile} ({Math.Round(_overlay.OverlayTextManager.GetProgress() * 100, DecimalPrecision)}%)";
         StartText.color = s.Colors.JStart;
     }
 
@@ -261,7 +262,7 @@ public class ExtendedOverlayModule
         var s = Main.Settings;
         if (!s.ShowHitOffset || !_overlay.HitOffsetText) return;
         int dp = s.HitOffsetDecimal;
-        _overlay.HitOffsetText.text = $"<color=white>{s.Labels.HitOffset} -</color> {Math.Round(timing, dp)}";
+        _overlay.HitOffsetText.text = $"<color=white>{s.Labels.HitOffset}{s.Labels.HitOffsetSeparator}</color>{Math.Round(timing, dp)}";
         _overlay.HitOffsetText.color = s.Colors.JHitOffset.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
     }
 
@@ -275,27 +276,27 @@ public class ExtendedOverlayModule
         switch (Main.Settings.TimingTextType)
         {
             case TimingTextType.Timing:
-                TimingText.text = $"<color=white>{labels.Timing} |</color> {Math.Round(timing, dp)}";
+                TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)}";
                 TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
                 break;
             case TimingTextType.AvgTiming:
                 if (AvgTimingText)
                 {
-                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg) |</color> {Math.Round(average, dp)}";
+                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg){labels.TimingSeparator}</color>{Math.Round(average, dp)}";
                     AvgTimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(average), 150) / 150);
                 }
                 break;
             case TimingTextType.Both:
-                TimingText.text = $"<color=white>{labels.Timing} |</color> {Math.Round(timing, dp)}";
+                TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)}";
                 TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
                 if (AvgTimingText)
                 {
-                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg) |</color> {Math.Round(average, dp)}";
+                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg){labels.TimingSeparator}</color>{Math.Round(average, dp)}";
                     AvgTimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(average), 150) / 150);
                 }
                 break;
             default: // BothInOneLine：一行双值（原行为）
-                TimingText.text = $"<color=white>{labels.Timing} |</color> {Math.Round(timing, dp)} ({Math.Round(average, dp)})";
+                TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)} ({Math.Round(average, dp)})";
                 TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
                 break;
         }
@@ -402,7 +403,7 @@ public class ExtendedOverlayModule
                             ? _overlay.MusicTimeCache
                             : FmtTime(time, hourNeed);
 
-                        _overlay.TimeText.text = $"{_overlay._musicTimeLabel} {timeStr}~{_overlay.MusicTimeCache}";
+                        _overlay.TimeText.text = $"{_overlay._musicTimeLabel}{timeStr}~{_overlay.MusicTimeCache}";
                         _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
                     }
                 }
@@ -429,7 +430,7 @@ public class ExtendedOverlayModule
             bool hourNeed = totalTime >= 3600;
             _overlay.MapTimeCache ??= FmtTime(totalTime, hourNeed);
             string timeStr = time == totalTime ? _overlay.MapTimeCache : FmtTime(time, hourNeed);
-            string text = $"{_overlay._mapTimeLabel} {timeStr}~{_overlay.MapTimeCache}";
+            string text = $"{_overlay._mapTimeLabel}{timeStr}~{_overlay.MapTimeCache}";
             if (s.ShowMapTime) { _overlay.MapTimeText.text = text; _overlay.MapTimeText.color = totalTime > 0 ? s.Colors.GetMapTimeColor(time / totalTime) : Color.white; }
             if (requireMusicToMap) { _overlay.TimeText.text = text; _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white; }
         }

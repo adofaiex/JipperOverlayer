@@ -4,11 +4,11 @@
 ADOFAI 游戏内 overlay 模组（C#，双加载器：Unity Mod Manager + MelonLoader），
 显示进度/准度/BPM/连击/判定等。仓库 2228293026/JipperOverlayer，分支 master。
 
-## 当前任务（2026-09-18 会话确认，完成后更新此行）
-- 同步本地 `Libs/` 到 adofai-libs 最新游戏版本的代码改动；
-- 修正过时注释；
-- 测试 checkpoint restart 场景。
-- 已完成：commit `3975859` 已推送到 origin/master（5 个文件，中文 commit message）。
+## 当前任务（2026-11-13 会话确认，完成后更新此行）
+- 为 overlay 文本与数值之间的分隔符新增逐项自定义（20 个文本项独立配置）；
+- 修复多人模式下 XScore 的 `MAX-n` 与潜力值比原生结算差 2 分的问题
+  （改用「已判定计分格数 × 2」作分母，参照 JipperResourcePack 的 JRP 口径）。
+- 已完成：待 push。
 
 ## 事实锚点（2026-09-18 核实）
 - `CHANGELOG.md` 共 324 行，顶部为 `## Unreleased`。以实际 read 结果为准。

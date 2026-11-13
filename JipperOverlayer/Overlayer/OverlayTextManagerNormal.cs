@@ -38,7 +38,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             float acc = VersionSafe.GetPercentAcc();
             float maxAcc = 1 + (seqID - overlay.NoCheckStartTile + 1) * 0.0001f;
             float potentialAcc = AccuracyMath.GetPotentialAccuracy(hits, acc, judged, remaining);
-            SetDualText(s.AccuracyTextType, overlay.AccuracyText, overlay.ExtendedOverlay?.PotentialAccuracyText, labels.Accuracy,
+            SetDualText(s.AccuracyTextType, overlay.AccuracyText, overlay.ExtendedOverlay?.PotentialAccuracyText, labels.Accuracy, labels.AccuracySeparator,
                 Math.Round(acc * 100, s.AccuracyDecimal) + "%", Math.Round(potentialAcc * 100, s.AccuracyDecimal) + "%",
                 t => t.color = s.Colors.GetAccuracyColor(xacc == 1 ? 1 : acc / maxAcc, xacc == 1),
                 t => t.color = s.Colors.GetAccuracyColor(xacc == 1 ? 1 : potentialAcc / (maxAcc + remaining * 0.0001f), xacc == 1));
@@ -46,7 +46,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         if (s.ShowXAccuracy)
         {
             float potentialXAcc = AccuracyMath.GetPotentialXAccuracy(xacc, judged, remaining);
-            SetDualText(s.XAccuracyTextType, overlay.XAccuracyText, overlay.ExtendedOverlay?.PotentialXAccuracyText, labels.XAccuracy,
+            SetDualText(s.XAccuracyTextType, overlay.XAccuracyText, overlay.ExtendedOverlay?.PotentialXAccuracyText, labels.XAccuracy, labels.XAccuracySeparator,
                 Math.Round(xacc * 100, s.XAccuracyDecimal) + "%", Math.Round(potentialXAcc * 100, s.XAccuracyDecimal) + "%",
                 t => t.color = s.Colors.GetXAccuracyColor(xacc, xacc == 1),
                 t => t.color = s.Colors.GetXAccuracyColor(potentialXAcc, potentialXAcc == 1));
@@ -56,18 +56,19 @@ public class OverlayTextManagerNormal : IOverlayTextManager
     }
 
     /// <summary>当前值/潜力值双文本渲染：
-    /// Current 只写主文本；Potential 只写潜力文本；Both 两行；BothInOneLine 主文本一行双值。</summary>
+    /// Current 只写主文本；Potential 只写潜力文本；Both 两行；BothInOneLine 主文本一行双值。
+    /// separator = 标签与数值之间的分隔符（LabelConfig 按文本项独立配置）。</summary>
     static void SetDualText(PotentialTextType type, TMPro.TextMeshProUGUI text, TMPro.TextMeshProUGUI potentialText,
-        string label, string value, string potentialValue, Action<TMPro.TextMeshProUGUI> colorCurrent, Action<TMPro.TextMeshProUGUI> colorPotential)
+        string label, string separator, string value, string potentialValue, Action<TMPro.TextMeshProUGUI> colorCurrent, Action<TMPro.TextMeshProUGUI> colorPotential)
     {
         if (type != PotentialTextType.Potential && text)
         {
-            text.text = "<color=white>" + label + " |</color> " +
+            text.text = "<color=white>" + label + separator + "</color>" +
                         (type == PotentialTextType.BothInOneLine ? value + " (" + potentialValue + ")" : value);
             colorCurrent(text);
         }
         if (type is not (PotentialTextType.Potential or PotentialTextType.Both) || !potentialText) return;
-        potentialText.text = "<color=white>P." + label + " |</color> " + potentialValue;
+        potentialText.text = "<color=white>P." + label + separator + "</color>" + potentialValue;
         colorPotential(potentialText);
     }
 
@@ -80,13 +81,11 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         int soFarMax, potentialX, potentialTotal;
         if (native)
         {
-            // 游戏结算同口径（DetailedResults.cs:92）：MAX−n = maxXScore − xScore − 2×剩余。
-            // 结算时剩余为 0 → 与结算界面完全一致；开局为 0；TooEarly 等不前进格子的
-            // 多余按压不影响分母（playerHitMarginCount 口径会把它们算进来，差 +16 即此因）。
-            int rem = AccuracyMath.GetRemainingPlayerHitFloors(GameRefs.CurrentSeqID);
-            soFarMax = Math.Max(0, mapMax - rem * AccuracyMath.XPerfectValue);
+            // JRP 口径：分母 = 已判定计分格数 × 2，剩余格只用于潜力值。
+            // 这样命中瞬间的位置滞后（currentSeqID 落后一格）不会再让 MAX−n 少 2 分，
+            // 结算界面与原生 DetailedResults（maxXScore − xScore）完全一致。
+            AccuracyMath.GetXScoreValues(hits, x, mapMax, out soFarMax, out potentialX);
             potentialTotal = mapMax;
-            potentialX = x + rem * AccuracyMath.XPerfectValue;
         }
         else
         {
@@ -95,7 +94,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             potentialTotal = soFarMax + remaining * AccuracyMath.XPerfectValue;
             potentialX = x + remaining * AccuracyMath.XPerfectValue;
         }
-        SetDualText(s.XScorePotentialType, overlay.ExtendedOverlay?.XScoreText, overlay.ExtendedOverlay?.PotentialXScoreText, "XScore",
+        SetDualText(s.XScorePotentialType, overlay.ExtendedOverlay?.XScoreText, overlay.ExtendedOverlay?.PotentialXScoreText, "XScore", s.Labels.XScoreSeparator,
             AccuracyMath.GetXScoreText(x, soFarMax, s.XScoreTextType),
             AccuracyMath.GetXScoreText(potentialX, potentialTotal, s.XScoreTextType, potential: true),
             t => t.color = s.Colors.GetXScoreColor(soFarMax == 0 ? 1 : (float)x / soFarMax),
@@ -111,7 +110,7 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             int cur = GameRefs.CurrentSeqID;
             var floors = GameRefs.LevelMaker?.listFloors;
             int last = floors != null && floors.Count > 0 ? floors.Count - 1 : 0;
-            overlay.ProgressText.text = $"<color=white>{labels.Progress} |</color> {cur} / {last}{(cur == last ? "" : $" [-{last - cur}]")} ({Math.Round(Progress * 100, Main.Settings.ProgressDecimal)}%)";
+            overlay.ProgressText.text = $"<color=white>{labels.Progress}{labels.ProgressSeparator}</color>{cur} / {last}{(cur == last ? "" : $" [-{last - cur}]")} ({Math.Round(Progress * 100, Main.Settings.ProgressDecimal)}%)";
             overlay.ProgressText.color = Main.Settings.Colors.GetProgressColor(Progress);
         }
         else
@@ -120,7 +119,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             _sb.Clear();
             _sb.Append("<color=white>");
             _sb.Append(labels.Progress);
-            _sb.Append(" |</color> ");
+            _sb.Append(labels.ProgressSeparator);
+            _sb.Append("</color>");
             if (overlay.StartTile > 0)
             {
                 _sb.Append("<color=#");
@@ -159,7 +159,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         _sb.Clear();
         _sb.Append("<color=white>");
         _sb.Append(Main.Settings.Labels.Checkpoint);
-        _sb.Append(" |</color> ");
+        _sb.Append(Main.Settings.Labels.CheckpointSeparator);
+        _sb.Append("</color>");
         _sb.Append(GameRefs.CheckpointsUsed);
         _sb.Append(" (");
         _sb.Append(CurCheck);
@@ -187,7 +188,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         _sb.Clear();
         _sb.Append("<color=white>");
         _sb.Append(Main.Settings.Labels.Best);
-        _sb.Append(" |</color> ");
+        _sb.Append(Main.Settings.Labels.BestSeparator);
+        _sb.Append("</color>");
         _sb.Append(Math.Round(best * 100, Main.Settings.BestDecimal));
         _sb.Append('%');
         overlay.BestText.SetText(_sb);
@@ -218,7 +220,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
             _sb.Clear();
             _sb.Append("<color=white>");
             _sb.Append(s.Labels.Death);
-            _sb.Append(" |</color> ");
+            _sb.Append(s.Labels.DeathSeparator);
+            _sb.Append("</color>");
             _sb.Append(_deathCount);
             overlay.DeathText.SetText(_sb);
             _lastDeath = _deathCount;
@@ -261,7 +264,8 @@ public class OverlayTextManagerNormal : IOverlayTextManager
         _sb.Clear();
         _sb.Append("<color=white>");
         _sb.Append(labels.State);
-        _sb.Append(" |</color> ");
+        _sb.Append(labels.StateSeparator);
+        _sb.Append("</color>");
         _sb.Append(state);
         overlay.StateText.SetText(_sb);
     }

@@ -36,3 +36,6 @@ tools/VerifyGameApi/obj/
 # ===== Local agent scratch / session logs =====
 .dsh-meow/
 session.jsonl
+
+# ===== Local deployment staging (release DLLs + debug crops) =====
+deploy-output/

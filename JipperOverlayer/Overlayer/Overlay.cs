@@ -1147,11 +1147,12 @@ public class Overlay
     {
         var s = Main.Settings;
         _twSb.Clear();
+        var twSep = s.Labels.TimingWindowSeparator;
         if (tw.XPerfectValid)
-            _twSb.Append("\n<color=#").Append(GameCompat.XPerfectHex).Append(">").Append(s.Labels.XPerfectLabel).Append("</color> | ±").Append(Math.Round(tw.XPerfectMs)).Append("ms");
-        _twSb.Append("\n<color=#60FF4E>").Append(s.Labels.PerfectLabel).Append("</color> | ±").Append(Math.Round(tw.PerfectMs)).Append("ms");
-        _twSb.Append("\n<color=#A0FF4E>").Append(s.Labels.GreatLabel).Append("</color> | ±").Append(Math.Round(tw.GreatMs)).Append("ms");
-        _twSb.Append("\n<color=#FF6F4E>").Append(s.Labels.GoodLabel).Append("</color> | ±").Append(Math.Round(tw.GoodMs)).Append("ms");
+            _twSb.Append("\n<color=#").Append(GameCompat.XPerfectHex).Append(">").Append(s.Labels.XPerfectLabel).Append("</color>").Append(twSep).Append("±").Append(Math.Round(tw.XPerfectMs)).Append("ms");
+        _twSb.Append("\n<color=#60FF4E>").Append(s.Labels.PerfectLabel).Append("</color>").Append(twSep).Append("±").Append(Math.Round(tw.PerfectMs)).Append("ms");
+        _twSb.Append("\n<color=#A0FF4E>").Append(s.Labels.GreatLabel).Append("</color>").Append(twSep).Append("±").Append(Math.Round(tw.GreatMs)).Append("ms");
+        _twSb.Append("\n<color=#FF6F4E>").Append(s.Labels.GoodLabel).Append("</color>").Append(twSep).Append("±").Append(Math.Round(tw.GoodMs)).Append("ms");
         return _twSb.ToString();
     }
 
@@ -1179,13 +1180,13 @@ public class Overlay
             switch (id)
             {
                 case 0: // Tile BPM
-                    _bpmSb.Append($"<color=white>{labels.TBPM} | <color=#{hex}>{Math.Round(tileBpm, 2)}</color></color>");
+                    _bpmSb.Append($"<color=white>{labels.TBPM}{labels.TBPMSeparator}<color=#{hex}>{Math.Round(tileBpm, 2)}</color></color>");
                     break;
                 case 1: // Current BPM
-                    _bpmSb.Append($"<color=white>{labels.CBPM} |</color> {Math.Round(curBpm, 2)}");
+                    _bpmSb.Append($"<color=white>{labels.CBPM}{labels.CBPMSeparator}</color>{Math.Round(curBpm, 2)}");
                     break;
                 case 2: // KPS
-                    _bpmSb.Append($"<color=white>{labels.KPS} |</color> {kpsPrefix}{Math.Round(kps, 2)}{kpsSuffix}");
+                    _bpmSb.Append($"<color=white>{labels.KPS}{labels.KPSSeparator}</color>{kpsPrefix}{Math.Round(kps, 2)}{kpsSuffix}");
                     break;
             }
         }
@@ -1195,8 +1196,8 @@ public class Overlay
     internal void RefreshTimeLabels()
     {
         var s = Main.Settings;
-        _musicTimeLabel = $"<color=white>{s.Labels.MusicTime} |</color>";
-        _mapTimeLabel = $"<color=white>{s.Labels.MapTime} |</color>";
+        _musicTimeLabel = $"<color=white>{s.Labels.MusicTime}{s.Labels.MusicTimeSeparator}</color>";
+        _mapTimeLabel = $"<color=white>{s.Labels.MapTime}{s.Labels.MapTimeSeparator}</color>";
         ExtendedOverlay?.InvalidateTimeCaches();
     }
 
@@ -1254,7 +1255,7 @@ public class Overlay
         _lastTimingScale = cur;
         _timingSb.Clear();
         _timingSb.Append(Main.Settings.Labels.TimingScale);
-        _timingSb.Append(" - ");
+        _timingSb.Append(Main.Settings.Labels.TimingScaleSeparator);
         _timingSb.Append(cur);
         _timingSb.Append('%');
         TimingScaleText.SetText(_timingSb);

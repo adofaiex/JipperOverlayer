@@ -407,6 +407,35 @@ internal static class AccuracyMath
         return sum;
     }
 
+    /// <summary>已判定的「计分格」数（滞后无关）。auto 地板与 midspin 都不计分
+    /// （原生 PlayerHitMarginTypes 不含这两项），不计入已判定格数。
+    /// 必须从 hits 自身求和而不是用 seqID：命中瞬间 currentSeqID 恒落后一格
+    /// （AddHit 先于 MoveToNextFloor 推进 seqID），用 seqID 会把满分算成 MAX−2。</summary>
+    public static int GetScoredJudgedTiles(int[] hits)
+    {
+        if (hits == null) return 0;
+        return SumHits(hits)
+            - HitMarginCompat.Get(hits, HitMarginCompat.Auto)
+            - HitMarginCompat.Get(hits, HitMarginCompat.Midspin);
+    }
+
+    /// <summary>XScore 三元组（JRP 口径，参照 JipperResourcePack 的 UpdateXScore/SetXScore）：
+    ///   分母 maxXScore = 已判定计分格数 × 2      （不是「地图满分 − 2×剩余」）
+    ///   剩余计分格    = 地图计分格总数 − 已判定计分格数
+    ///   潜力值        = xScore + 剩余计分格 × 2
+    /// 分母改用「已判定格数」后，命中瞬间的位置滞后（一格）不再影响 MAX−n：
+    /// 结算界面与原生 DetailedResults（maxXScore − xScore，剩余项非编辑器恒为 0）一致。
+    /// 地图计分格总数 = 原生 maxXScore ÷ 2（= 原生 PlayerHitFloors.Count）。</summary>
+    public static void GetXScoreValues(int[] hits, int xScore, int mapMax,
+        out int maxXScore, out int potentialXScore)
+    {
+        int scored = GetScoredJudgedTiles(hits);
+        int totalScored = mapMax / XPerfectValue;
+        int remaining = Math.Max(0, totalScored - scored);
+        maxXScore = scored * XPerfectValue;
+        potentialXScore = xScore + remaining * XPerfectValue;
+    }
+
     /// <summary>剩余未判定格数（终点格不算）。</summary>
     public static int GetRemainingTiles(int seqID)
     {

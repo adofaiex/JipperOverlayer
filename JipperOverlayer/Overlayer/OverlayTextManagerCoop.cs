@@ -79,7 +79,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     {
         pData.Progress = progress;
         _sb.Clear();
-        _sb.Append(" | <color=#");
+        _sb.Append(Main.Settings.Labels.ProgressSeparator);
+        _sb.Append("<color=#");
         _sb.Append(Main.Settings.Colors.GetProgressHex(progress, true));
         _sb.Append(">");
         _sb.Append(Math.Round(progress * 100, Main.Settings.ProgressDecimal));
@@ -134,12 +135,14 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             var xs = overlay.ExtendedOverlay?.XScoreText;
             if (xs)
             {
-                // 各段分隔符 " | " 在 rich text 标签之外，继承组件底色；单人路径
+                // 各段分隔符在 rich text 标签之外，继承组件底色；单人路径
                 // SetDualText 会把底色写成渐变色（开局 t=1 即 PerfectColor），coop
-                // 不重置的话，上次单人局的残留色会染在竖线分隔符上。
+                // 不重置的话，上次单人局的残留色会染在分隔符上。
                 xs.color = Color.white;
                 _sb.Clear();
-                _sb.Append("<color=white>XScore |</color>");
+                // 标题只写标签本身：每段玩家数据自带分隔符前缀（XScoreSeparator），
+                // 标题再写一份会拼出双分隔符（旧代码硬编码 "XScore |" 即此问题）。
+                _sb.Append("<color=white>XScore</color>");
                 for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].XScoreCache.AppendTo(_sb);
                 xs.SetText(_sb);
             }
@@ -160,7 +163,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         int dec = s.AccuracyDecimal;
         string hex = s.Colors.GetAccuracyHex(xacc == 1 ? 1 : acc / maxAcc, xacc == 1);
         _sb.Clear();
-        _sb.Append(" | <color=#");
+        _sb.Append(s.Labels.AccuracySeparator);
+        _sb.Append("<color=#");
         _sb.Append(hex);
         _sb.Append(">");
         if (type == PotentialTextType.Current)
@@ -202,7 +206,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         int dec = s.XAccuracyDecimal;
         string hex = s.Colors.GetXAccuracyHex(xacc, xacc == 1);
         _sb.Clear();
-        _sb.Append(" | <color=#");
+        _sb.Append(s.Labels.XAccuracySeparator);
+        _sb.Append("<color=#");
         _sb.Append(hex);
         _sb.Append(">");
         if (type == PotentialTextType.Current)
@@ -246,10 +251,14 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         int soFarMax, potentialX, potentialTotal;
         if (native)
         {
-            int rem = AccuracyMath.GetRemainingPlayerHitFloors(seqID);
-            soFarMax = Math.Max(0, mapMax - rem * AccuracyMath.XPerfectValue);
+            // JRP 口径：分母 = 已判定计分格数 × 2，剩余格只用于潜力值。
+            // 不再用「星球所在格 / currentSeqID」推剩余——那两者在命中瞬间都落后一格，
+            // 会把关卡已打完的局面算成「还剩 1 格」：
+            //   MAX−n = maxXScore − 2×剩余 − x  →  比原生结算少 2 分
+            //   潜力值 = x + 2×剩余            →  比实际最终值多 2 分
+            // 而原生结算（DetailedResults.cs:82-92）的剩余项在非编辑器下恒为 0。
+            AccuracyMath.GetXScoreValues(hits, x, mapMax, out soFarMax, out potentialX);
             potentialTotal = mapMax;
-            potentialX = x + rem * AccuracyMath.XPerfectValue;
         }
         else
         {
@@ -261,7 +270,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         string hex = s.Colors.GetXScoreHex(soFarMax == 0 ? 1 : (float)x / soFarMax);
         var type = s.XScorePotentialType;
         _sb.Clear();
-        _sb.Append(" | <color=#");
+        _sb.Append(s.Labels.XScoreSeparator);
+        _sb.Append("<color=#");
         _sb.Append(hex);
         _sb.Append(">");
         if (type == PotentialTextType.Current)
@@ -292,7 +302,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         _sb.Append(Main.Settings.Labels.Progress);
         if (overlay.StartTile > 0)
         {
-            _sb.Append(" | <color=#");
+            _sb.Append(Main.Settings.Labels.ProgressSeparator);
+            _sb.Append("<color=#");
             _sb.Append(Main.Settings.Colors.GetProgressHex(overlay.StartProgress, true));
             _sb.Append(">");
             _sb.Append(Math.Round(overlay.StartProgress * 100, Main.Settings.ProgressDecimal));
@@ -322,7 +333,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         _sb.Clear();
         _sb.Append("<color=white>");
         _sb.Append(Main.Settings.Labels.Checkpoint);
-        _sb.Append(" |</color> ");
+        _sb.Append(Main.Settings.Labels.CheckpointSeparator);
+        _sb.Append("</color>");
         _sb.Append(GameRefs.CheckpointsUsed);
         _sb.Append(" (");
         _sb.Append(CurCheck);
@@ -350,7 +362,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         _sb.Clear();
         _sb.Append("<color=white>");
         _sb.Append(Main.Settings.Labels.Best);
-        _sb.Append(" |</color> ");
+        _sb.Append(Main.Settings.Labels.BestSeparator);
+        _sb.Append("</color>");
         _sb.Append(Math.Round(best * 100, Main.Settings.BestDecimal));
         _sb.Append('%');
         overlay.BestText.SetText(_sb);
@@ -395,7 +408,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             _playerDeath[i] = death;
             if (_lastPlayerDeath[i] != death) { _lastPlayerDeath[i] = death; changed = true; }
             string hex = VersionSafe.GetPlayerColorHex(i);
-            sb.Append(" | <color=#");
+            sb.Append(s.Labels.DeathSeparator);
+            sb.Append("<color=#");
             sb.Append(hex);
             sb.Append(">");
             sb.Append(death);
@@ -422,7 +436,8 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
             string state = GetPlayerState(p, hits, overlay);
             string hex = VersionSafe.GetPlayerColorHex(i);
-            sb.Append(" | <color=#");
+            sb.Append(s.Labels.StateSeparator);
+            sb.Append("<color=#");
             sb.Append(hex);
             sb.Append(">");
             sb.Append(state);

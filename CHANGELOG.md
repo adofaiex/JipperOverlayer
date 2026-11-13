@@ -2,12 +2,17 @@
 
 ## Unreleased
 
+### Features
+
+- **Per-text label/value separators**: every overlay readout can now use its own separator between the label and the value. The custom-labels section grows a small input next to each label row, covering progress, accuracy, XAccuracy, XScore, music/map time, checkpoint, best, tile/current BPM, KPS, timing scale, FPS, author, state, death, start, timing and hit offset (plus the coop segments between players); XScore and the judgement-window rows get a separator-only entry since they have no editable label. The defaults keep the previous look - ` | ` everywhere except the timing scale and hit offset, which stay ` - ` - and an empty field removes the separator entirely. Separators are stored next to the labels in `labels.json`, applied live to every text, and missing fields in older configs fall back to the defaults
+
 ### Performance
 
 - **Strongly typed game-member reads**: `GameRefs` no longer boxes through `object` or pays a full reflected `GetValue`/`Invoke` on every access — the members are bound as strongly typed delegates (`FieldRefAccess` for fields, `CreateDelegate` for properties), which matters most for `paused` (read every frame) and `currentSeqID` (read on every hit). The declared member type is verified at bind time and a mismatch falls back to the reflected getter, so a wrong assumption degrades loudly in the log instead of silently returning `default` and leaving the overlay with frozen values
 
 ### Bug Fixes
 
+- **Co-op XScore disagreed with the results screen by 2 points**: the `MAX-n` denominator was derived from the map maximum minus the remaining hit floors, and the remaining count was taken from the player's planet position, which lags one floor behind the shared controller progress at the moment of a hit. The last hit of a run therefore rendered as "one floor still to go" - `270 (MAX-18) (272)` instead of the native results' `270 (MAX-20)` - and the stale value survived to the results screen because no further hit arrives to correct it. The denominator is now the number of scoring floors already judged (counted from the hit data, so it is immune to the position lag) with the remaining floors only feeding the potential value, matching the native `DetailedResults` formula; the coop XScore heading no longer doubles the separator either
 - **XScore perfect colour no longer changes with Apply To All**: XScore now uses the same fixed settings gold as every other perfect readout, and the global hue action no longer rewrites its hidden `PerfectColor`; the visible gradient stops still follow the chosen base hue
 - **Forward combo title sat too low**: the non-reversed layout placed `ComboTitle` at a hard-coded `43.505`, which is half the value text height only at the reference's `fontSize` 78 — with the default `ComboValFontSize` 108 the title was ~17px short of the number's top edge and sank into the digits. The offset is now half the value text's actual height, derived from the live font size (measured once from the TMP preferred height, with the reference ratio as a fallback), so it tracks any `ComboValFontSize` and is re-applied when the font size setting changes; the bump animation also follows the growing font instead of a fixed `+15`. The reversed layout is untouched
 
