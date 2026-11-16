@@ -23,6 +23,12 @@ public enum OverlayHandle
     AttemptCoop,
     ProgressBar,
     HitOffset,
+    // 自定义文本行（每行一个把手，最多 5 行可拖；更多行仍可用设置里的 X/Y 字段）
+    Ct0,
+    Ct1,
+    Ct2,
+    Ct3,
+    Ct4,
 }
 
 /// <summary>
@@ -453,6 +459,11 @@ public class OverlayDragEditor : MonoBehaviour
         OverlayHandle.AttemptCoop => Tr.Get(Tr.Key.PosAttempt) + " (Coop)",
         OverlayHandle.ProgressBar => Tr.Get(Tr.Key.PosProgBar),
         OverlayHandle.HitOffset => Tr.Get(Tr.Key.PosHitOffset),
+        OverlayHandle.Ct0 => Tr.Get(Tr.Key.CustomText) + " #1",
+        OverlayHandle.Ct1 => Tr.Get(Tr.Key.CustomText) + " #2",
+        OverlayHandle.Ct2 => Tr.Get(Tr.Key.CustomText) + " #3",
+        OverlayHandle.Ct3 => Tr.Get(Tr.Key.CustomText) + " #4",
+        OverlayHandle.Ct4 => Tr.Get(Tr.Key.CustomText) + " #5",
         _ => h.ToString(),
     };
 

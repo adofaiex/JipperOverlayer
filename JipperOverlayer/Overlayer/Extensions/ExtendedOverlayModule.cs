@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using JipperOverlayer.Overlayer.Tags;
 using JipperOverlayer.Overlayer.Util;
 using TMPro;
 using UnityEngine;
@@ -32,6 +33,16 @@ public class ExtendedOverlayModule
     private bool _musicStopped;
     private float _lastTiming;
     public int DecimalPrecision = 2;
+
+    /// <summary>最近一次 FPS 采样（供 {Fps} tag 复用，避免模板与内置文本各算一套）。</summary>
+    internal float LastFps;
+    /// <summary>最近一次 BPM 计算的 KPS（含伪 BPM 的 ×count），供 {Kps} tag 复用。</summary>
+    internal float LastKps = -1f;
+
+    /// <summary>最近一次打击的毫秒偏移（{Timing} / {HitOffset} tag）。</summary>
+    internal float LastTiming => _lastTiming;
+    /// <summary>全部打击的平均毫秒偏移（{AvgTiming} tag）。</summary>
+    internal float AverageTiming => _timings == null || _timings.Count == 0 ? 0f : (float)(_timingsSum / _timings.Count);
 
     private static System.Reflection.PropertyInfo _authorProperty;
     private static object _authorSource;
@@ -68,6 +79,29 @@ public class ExtendedOverlayModule
     public void SetupLocation()
     {
         if (!FPSText) return;
+        // 非游玩显示模式：内置元素全部隐藏，主栈流式布局对它们没有意义，而且流式
+        // 高度依赖游戏态条件（检查点/无失败/StartTile），菜单里重排会得到与游玩时
+        // 不同的 y——打开设置触发 RefreshVisibility 时就表现为「文本位置偏移」。
+        // 这里固定从栈顶起排、只排勾了「非游玩时显示」的进栈行，与游戏态完全无关。
+        if (_overlay.OutsidePlayActive)
+        {
+            int oy = -15;
+            var opLines = Main.Settings?.CustomTexts;
+            var opTexts = _overlay.CustomTexts;
+            for (int i = 0; i < opTexts.Count; i++)
+            {
+                var text = opTexts[i];
+                if (text == null) continue;
+                var line = opLines != null && i < opLines.Count ? opLines[i] : null;
+                bool on = line != null && line.Enabled && line.InStack && line.ShowOutsidePlay
+                    && !string.IsNullOrEmpty(line.Template);
+                text.enabled = on;
+                if (!on) continue;
+                text.rectTransform.anchoredPosition = new Vector2(228 + line.OffsetX, oy + line.OffsetY);
+                oy -= 35;
+            }
+            return;
+        }
         int y = -15;
         var s = Main.Settings;
         bool checkAuto = !s.RemoveNotRequireInAuto || !GameRefs.IsAuto;
@@ -81,6 +115,23 @@ public class ExtendedOverlayModule
             if (text == null) continue;
             bool enabled = IsExtendedElementEnabled(elem, s, checkAuto);
             SetupText(text, enabled, ref y);
+        }
+
+        // 自定义行（参与主栈）：接在既有栈元素之后，顺序即列表顺序。
+        var customs = _overlay.CustomTexts;
+        var customLines = s.CustomTexts;
+        for (int i = 0; i < customs.Count; i++)
+        {
+            var text = customs[i];
+            if (text == null) continue;
+            var line = customLines != null && i < customLines.Count ? customLines[i] : null;
+            bool on = line != null && line.Enabled && line.InStack && !string.IsNullOrEmpty(line.Template);
+            text.enabled = on;
+            if (!on) continue;
+            // 行偏移叠加：拖拽编辑器 / 设置里 X/Y 写到 line.OffsetX/Y，
+            // 进栈行 = 流式位置 + 行偏移（每行可单独微调）。
+            text.rectTransform.anchoredPosition = new Vector2(228 + line.OffsetX, y + line.OffsetY);
+            y -= 35;
         }
 
         _overlay.UpdateProgress();
@@ -173,13 +224,16 @@ public class ExtendedOverlayModule
     public void UpdateFPS(float deltaTime)
     {
         var s = Main.Settings;
+        if (deltaTime > 0f) LastFps = 1f / deltaTime;
         if (!s.ShowFPS || !_overlay.GameObject.activeSelf || (_fpsTime += deltaTime) < s.FPSRefreshRate) return;
         _fpsTime %= s.FPSRefreshRate;
+        if (TemplateEngine.TryApply(s.Labels.FpsTemplate, FPSText)) return;
         Overlay._textSb.Clear();
         Overlay._textSb.Append("<color=white>");
         Overlay._textSb.Append(s.Labels.FPS);
         Overlay._textSb.Append(s.Labels.FPSSeparator);
         Overlay._textSb.Append("</color>");
+        LastFps = 1f / deltaTime;
         Overlay._textSb.Append((1f / deltaTime).ToString($"F{DecimalPrecision}"));
         FPSText.text = Overlay._textSb.ToString();
         FPSText.color = s.Colors.JFps;
@@ -189,6 +243,7 @@ public class ExtendedOverlayModule
     {
         var s = Main.Settings;
         if (!s.ShowAuthor || !_overlay.GameObject.activeSelf) return;
+        if (TemplateEngine.TryApply(s.Labels.AuthorTemplate, AuthorText)) return;
         var ld = scnGame.instance?.levelData;
         if (!ReferenceEquals(_authorSource, ld))
         {
@@ -196,8 +251,21 @@ public class ExtendedOverlayModule
             _authorProperty = ld?.GetType().GetProperty("author",
                 System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
         }
-        string author = _authorProperty?.GetValue(ld) as string ?? "";
+        string author = CurrentAuthor();
         AuthorText.text = $"<color=white>{s.Labels.Author}{s.Labels.AuthorSeparator}</color>{author}";
+    }
+
+    /// <summary>当前关卡作者（缓存反射；无 levelData 时返回空串）。{Author} tag 复用同一结果。</summary>
+    internal string CurrentAuthor()
+    {
+        var ld = scnGame.instance?.levelData;
+        if (!ReferenceEquals(_authorSource, ld))
+        {
+            _authorSource = ld;
+            _authorProperty = ld?.GetType().GetProperty("author",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        }
+        return _authorProperty?.GetValue(ld) as string ?? "";
     }
 
     public void UpdateColors()
@@ -228,6 +296,7 @@ public class ExtendedOverlayModule
     {
         var s = Main.Settings;
         if (!s.ShowStart || !_overlay.GameObject.activeSelf || _overlay.StartTile != GameRefs.CurrentSeqID) return;
+        if (TemplateEngine.TryApply(s.Labels.StartTemplate, StartText)) return;
         StartText.text = $"<color=white>{s.Labels.Start}{s.Labels.StartSeparator}</color>{_overlay.StartTile} ({Math.Round(_overlay.OverlayTextManager.GetProgress() * 100, DecimalPrecision)}%)";
         StartText.color = s.Colors.JStart;
     }
@@ -261,6 +330,7 @@ public class ExtendedOverlayModule
     {
         var s = Main.Settings;
         if (!s.ShowHitOffset || !_overlay.HitOffsetText) return;
+        if (TemplateEngine.TryApply(s.Labels.HitOffsetTemplate, _overlay.HitOffsetText)) return;
         int dp = s.HitOffsetDecimal;
         _overlay.HitOffsetText.text = $"<color=white>{s.Labels.HitOffset}{s.Labels.HitOffsetSeparator}</color>{Math.Round(timing, dp)}";
         _overlay.HitOffsetText.color = s.Colors.JHitOffset.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
@@ -273,33 +343,38 @@ public class ExtendedOverlayModule
         float average = _timings == null || _timings.Count == 0 ? 0 : (float)(_timingsSum / _timings.Count);
         var labels = Main.Settings.Labels;
         var colors = Main.Settings.Colors;
-        switch (Main.Settings.TimingTextType)
+        var type = Main.Settings.TimingTextType;
+
+        // 模板优先：设置了模板的文本项整行交给模板，其余项仍走内置排版。
+        bool timingTpl = TemplateEngine.TryApply(labels.TimingTemplate, TimingText);
+        bool avgVisible = type is TimingTextType.AvgTiming or TimingTextType.Both;
+        bool avgTpl = avgVisible && AvgTimingText && TemplateEngine.TryApply(labels.AvgTimingTemplate, AvgTimingText);
+
+        if (!timingTpl)
         {
-            case TimingTextType.Timing:
-                TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)}";
-                TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
-                break;
-            case TimingTextType.AvgTiming:
-                if (AvgTimingText)
-                {
-                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg){labels.TimingSeparator}</color>{Math.Round(average, dp)}";
-                    AvgTimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(average), 150) / 150);
-                }
-                break;
-            case TimingTextType.Both:
-                TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)}";
-                TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
-                if (AvgTimingText)
-                {
-                    AvgTimingText.text = $"<color=white>{labels.Timing}(Avg){labels.TimingSeparator}</color>{Math.Round(average, dp)}";
-                    AvgTimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(average), 150) / 150);
-                }
-                break;
-            default: // BothInOneLine：一行双值（原行为）
-                TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)} ({Math.Round(average, dp)})";
-                TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
-                break;
+            switch (type)
+            {
+                case TimingTextType.Timing:
+                    TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)}";
+                    TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
+                    break;
+                case TimingTextType.AvgTiming:
+                    // 该模式只显示 Avg 行（Timing 行被布局隐藏），与内置行为一致。
+                    break;
+                case TimingTextType.Both:
+                    TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)}";
+                    TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
+                    break;
+                default: // BothInOneLine：一行双值（原行为）
+                    TimingText.text = $"<color=white>{labels.Timing}{labels.TimingSeparator}</color>{Math.Round(timing, dp)} ({Math.Round(average, dp)})";
+                    TimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(timing), 150) / 150);
+                    break;
+            }
         }
+
+        if (avgTpl || !avgVisible || !AvgTimingText) return;
+        AvgTimingText.text = $"<color=white>{labels.Timing}(Avg){labels.TimingSeparator}</color>{Math.Round(average, dp)}";
+        AvgTimingText.color = colors.JTiming.GetColor(1 - Math.Min(Math.Abs(average), 150) / 150);
     }
 
     // 标签编辑后重绘 Timing：用缓存的最近一次采样，不向统计里追加新样本。
@@ -399,12 +474,16 @@ public class ExtendedOverlayModule
 
                     if (!suppressWrite)
                     {
-                        string timeStr = time == totalTime
-                            ? _overlay.MusicTimeCache
-                            : FmtTime(time, hourNeed);
+                        // 模板接管：整行（含标签/颜色）由模板决定，内置排版整段跳过。
+                        if (!TemplateEngine.TryApply(s.Labels.MusicTimeTemplate, _overlay.TimeText))
+                        {
+                            string timeStr = time == totalTime
+                                ? _overlay.MusicTimeCache
+                                : FmtTime(time, hourNeed);
 
-                        _overlay.TimeText.text = $"{_overlay._musicTimeLabel}{timeStr}~{_overlay.MusicTimeCache}";
-                        _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
+                            _overlay.TimeText.text = $"{_overlay._musicTimeLabel}{timeStr}~{_overlay.MusicTimeCache}";
+                            _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
+                        }
                     }
                 }
             }
@@ -431,8 +510,16 @@ public class ExtendedOverlayModule
             _overlay.MapTimeCache ??= FmtTime(totalTime, hourNeed);
             string timeStr = time == totalTime ? _overlay.MapTimeCache : FmtTime(time, hourNeed);
             string text = $"{_overlay._mapTimeLabel}{timeStr}~{_overlay.MapTimeCache}";
-            if (s.ShowMapTime) { _overlay.MapTimeText.text = text; _overlay.MapTimeText.color = totalTime > 0 ? s.Colors.GetMapTimeColor(time / totalTime) : Color.white; }
-            if (requireMusicToMap) { _overlay.TimeText.text = text; _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white; }
+            if (s.ShowMapTime && !TemplateEngine.TryApply(s.Labels.MapTimeTemplate, _overlay.MapTimeText))
+            {
+                _overlay.MapTimeText.text = text;
+                _overlay.MapTimeText.color = totalTime > 0 ? s.Colors.GetMapTimeColor(time / totalTime) : Color.white;
+            }
+            if (requireMusicToMap && !TemplateEngine.TryApply(s.Labels.MusicTimeTemplate, _overlay.TimeText))
+            {
+                _overlay.TimeText.text = text;
+                _overlay.TimeText.color = totalTime > 0 ? s.Colors.GetMusicTimeColor(time / totalTime) : Color.white;
+            }
         }
     }
 
@@ -467,6 +554,7 @@ public class ExtendedOverlayModule
         _overlay.BPMText.text = text;
         if (_overlay.LastCurBpm != cbpm) _overlay.BPMText.color = s.Colors.GetBpmColor(cbpm / s.BpmColorMax);
         _overlay.LastTileBpm = bpm.TileBpm; _overlay.LastCurBpm = cbpm; _lastCurKps = kps;
+        LastKps = kps;
     }
 
     public Color UpdateComboColor(int combo)

@@ -32,10 +32,14 @@ Thumbs.db
 .vscode
 tools/VerifyGameApi/bin/
 tools/VerifyGameApi/obj/
+tools/TemplateEngineTest/bin/
+tools/TemplateEngineTest/obj/
 
 # ===== Local agent scratch / session logs =====
 .dsh-meow/
 session.jsonl
+.tmp-*/
+.tmp-shot.png
 
 # ===== Local deployment staging (release DLLs + debug crops) =====
 deploy-output/

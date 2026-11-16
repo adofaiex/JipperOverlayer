@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using JipperOverlayer.Overlayer.Tags;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -49,6 +50,8 @@ public class Overlay
     public TextMeshProUGUI StateText;   // set by ExtendedOverlayModule.InitializeExtraTexts
     public ProgressBar ProgressBar;
     public static readonly Color PurePerfectColor = new(1, 0.8549019607843137f, 0);
+    /// <summary>判定行组件默认底色（InitializeJudgement 与模板路径共用，保证首尾无色标签的数字一致）。</summary>
+    internal static readonly Color JudgementDefaultColor = new(0.8509804f, 0.345098f, 1f);
     public int[] Hit;
     private GameObject _mainContainer;
     private GameObject _bpmObject;
@@ -63,6 +66,8 @@ public class Overlay
     internal int LastTime = -1;
     internal int LastMapTime = -1;
     internal int StartTile;
+    /// <summary>本次尝试内的最大连击（UpdateCombo 逐次记录峰值，Show 时清零）。</summary>
+    internal int MaxCombo;
     public int NoCheckStartTile;
     // 首次启用时 Main 可能在 scnGame.Play 之前主动 Show；随后 Play 又会
     // 触发同一 floor。记录本次显示身份，吞掉完全重复的 Show，避免重复计一次尝试。
@@ -89,6 +94,9 @@ public class Overlay
     internal string _musicTimeLabel;
     internal string _mapTimeLabel;
     public ExtendedOverlayModule ExtendedOverlay;
+    /// <summary>自定义文本行对应的运行时对象（与 Settings.CustomTexts 同序）。</summary>
+    public readonly List<TextMeshProUGUI> CustomTexts = new();
+    private string _customTextSignature;
     internal static readonly StringBuilder _textSb = new(256);
     private static readonly StringBuilder _judgementSb = new(128);
     private static readonly StringBuilder _attemptSb = new(64);
@@ -471,6 +479,8 @@ public class Overlay
 
         foreach (var t in ExtraTexts)
             if (t) t.font = mainFont;
+        for (int i = 0; i < CustomTexts.Count; i++)
+            if (CustomTexts[i]) CustomTexts[i].font = mainFont;
 
         // 文本特效按槽位分别应用：各槽位可开启独立特效（阴影/描边），
         // 未开启的沿用全局设置。同字体的不同槽位会拿到不同材质
@@ -485,6 +495,15 @@ public class Overlay
         ApplySlotEffects(Settings.FontSlot.Attempt, new[] { AttemptText });
         // 扩展文本（FPS/作者/状态/死亡/开始/时机/XScore/潜力值等）跟随主区域。
         ApplySlotEffects(Settings.FontSlot.Main, ExtraTexts);
+        var fxLines = s.CustomTexts;
+        for (int i = 0; i < CustomTexts.Count; i++)
+        {
+            var t = CustomTexts[i];
+            if (!t) continue;
+            var line = fxLines != null && i < fxLines.Count ? fxLines[i] : null;
+            ShadowManager.ApplyShadow(t, line != null && line.EffectOverride && line.Effect != null
+                ? line.Effect : s.GetEffectForSlot(Settings.FontSlot.Main));
+        }
 
         ApplyFontSizes();
     }
@@ -523,6 +542,15 @@ public class Overlay
         if (HitOffsetText) HitOffsetText.fontSize = s.MainFontSize;
         foreach (var t in ExtraTexts)
             if (t) t.fontSize = mainSize;
+        var customLines = s.CustomTexts;
+        for (int i = 0; i < CustomTexts.Count; i++)
+        {
+            var t = CustomTexts[i];
+            if (!t) continue;
+            int fs = customLines != null && i < customLines.Count && customLines[i] != null && customLines[i].FontSize > 0
+                ? customLines[i].FontSize : mainSize;
+            t.fontSize = fs;
+        }
     }
 
     public void ApplyAlignment()
@@ -545,6 +573,15 @@ public class Overlay
         if (BestText) BestText.alignment = mainAlign;
         foreach (var t in ExtraTexts)
             if (t) t.alignment = mainAlign;
+        var alignLines = Main.Settings?.CustomTexts;
+        for (int i = 0; i < CustomTexts.Count; i++)
+        {
+            var t = CustomTexts[i];
+            if (!t) continue;
+            int a2 = alignLines != null && i < alignLines.Count && alignLines[i] != null && alignLines[i].Align >= 0
+                ? alignLines[i].Align : (int)mainAlign;
+            t.alignment = (TextAlignmentOptions)a2;
+        }
     }
 
     public void ApplyFontStyle()
@@ -568,6 +605,15 @@ public class Overlay
         if (HitOffsetText) HitOffsetText.fontStyle = mainStyle;
         foreach (var t in ExtraTexts)
             if (t) t.fontStyle = mainStyle;
+        var styleLines = Main.Settings?.CustomTexts;
+        for (int i = 0; i < CustomTexts.Count; i++)
+        {
+            var t = CustomTexts[i];
+            if (!t) continue;
+            int st2 = styleLines != null && i < styleLines.Count && styleLines[i] != null && styleLines[i].Style >= 0
+                ? styleLines[i].Style : (int)mainStyle;
+            t.fontStyle = (FontStyles)st2;
+        }
     }
 
     public void ApplyPositionOffsets()
@@ -596,6 +642,7 @@ public class Overlay
         UpdateHitOffsetPosition();
         if (_progressBarObject)
             _progressBarObject.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -10);
+        ApplyCustomTextPositions();
 
         if (!s.CustomPositionsEnabled) return;
         var o = Main.Settings;
@@ -649,8 +696,15 @@ public class Overlay
         OverlayHandle.AttemptCoop => _attemptObject ? _attemptObject.GetComponent<RectTransform>() : null,
         OverlayHandle.ProgressBar => _progressBarObject ? _progressBarObject.GetComponent<RectTransform>() : null,
         OverlayHandle.HitOffset => _hitOffsetObject ? _hitOffsetObject.GetComponent<RectTransform>() : null,
+        OverlayHandle.Ct0 => CtRect(0),
+        OverlayHandle.Ct1 => CtRect(1),
+        OverlayHandle.Ct2 => CtRect(2),
+        OverlayHandle.Ct3 => CtRect(3),
+        OverlayHandle.Ct4 => CtRect(4),
         _ => null,
     };
+
+    private RectTransform CtRect(int i) => i < CustomTexts.Count && CustomTexts[i] ? CustomTexts[i].rectTransform : null;
 
     private RectTransform JudgeRect(int i) =>
         _judgementObjects[i] ? _judgementObjects[i].GetComponent<RectTransform>() : null;
@@ -716,6 +770,11 @@ public class Overlay
             // 在当前模式下根本不会被读取，表现为「拖了没反应」。
             OverlayHandle.Attempt => !IsCoopJudge(),
             OverlayHandle.AttemptCoop => IsCoopJudge(),
+            OverlayHandle.Ct0 => CtRect(0) != null,
+            OverlayHandle.Ct1 => CtRect(1) != null,
+            OverlayHandle.Ct2 => CtRect(2) != null,
+            OverlayHandle.Ct3 => CtRect(3) != null,
+            OverlayHandle.Ct4 => CtRect(4) != null,
             _ => true,
         };
     }
@@ -752,8 +811,20 @@ public class Overlay
             OverlayHandle.AttemptCoop => new Vector2(s.AttemptCoopOffsetX, s.AttemptCoopOffsetY),
             OverlayHandle.ProgressBar => new Vector2(s.ProgBarOffsetX, s.ProgBarOffsetY),
             OverlayHandle.HitOffset => new Vector2(s.HitOffsetX, s.HitOffsetY),
+            OverlayHandle.Ct0 => CtOffset(0),
+            OverlayHandle.Ct1 => CtOffset(1),
+            OverlayHandle.Ct2 => CtOffset(2),
+            OverlayHandle.Ct3 => CtOffset(3),
+            OverlayHandle.Ct4 => CtOffset(4),
             _ => Vector2.zero,
         };
+    }
+
+    private Vector2 CtOffset(int i)
+    {
+        var lines = Main.Settings?.CustomTexts;
+        var l = lines != null && i < lines.Count ? lines[i] : null;
+        return l != null ? new Vector2(l.OffsetX, l.OffsetY) : Vector2.zero;
     }
 
     /// <summary>写回该把手的偏移。协作模式下第一条判定用 P1Judge 字段，
@@ -779,7 +850,21 @@ public class Overlay
             case OverlayHandle.AttemptCoop: s.AttemptCoopOffsetX = v.x; s.AttemptCoopOffsetY = v.y; break;
             case OverlayHandle.ProgressBar: s.ProgBarOffsetX = v.x; s.ProgBarOffsetY = v.y; break;
             case OverlayHandle.HitOffset: s.HitOffsetX = v.x; s.HitOffsetY = v.y; break;
+            case OverlayHandle.Ct0: SetCtOffset(0, v); break;
+            case OverlayHandle.Ct1: SetCtOffset(1, v); break;
+            case OverlayHandle.Ct2: SetCtOffset(2, v); break;
+            case OverlayHandle.Ct3: SetCtOffset(3, v); break;
+            case OverlayHandle.Ct4: SetCtOffset(4, v); break;
         }
+    }
+
+    private void SetCtOffset(int i, Vector2 v)
+    {
+        var lines = Main.Settings?.CustomTexts;
+        var l = lines != null && i < lines.Count ? lines[i] : null;
+        if (l == null) return;
+        l.OffsetX = v.x;
+        l.OffsetY = v.y;
     }
 
     /// <summary>编辑期间强制显示所有可拖元素，保证矩形是真实的、所见即所得。
@@ -802,6 +887,7 @@ public class Overlay
     public void RefreshVisibility()
     {
         var s = Main.Settings;
+        MaybeRebuildCustomTexts();
         bool coop = VersionSafe.IsCoopMode();
         int playerCount = coop ? VersionSafe.GetPlayerCount() : 1;
         int judgeCount = coop ? Math.Min(Math.Max(1, playerCount), 4) : 1;
@@ -830,6 +916,326 @@ public class Overlay
         ApplyFontStyle();
         ApplyFontSizes();
         RefreshTimeLabels();
+        // 非游玩显示模式：本方法的常规路径会把内置元素重新点亮，
+        // 模式开启期间在此统一压回隐藏态（自定义行文本本身不受影响）。
+        if (_outsidePlayActive)
+        {
+            SetBuiltInOverlayTextsEnabled(false);
+            if (_progressBarObject) _progressBarObject.SetActive(false);
+            // 进栈自定义行挂在主容器下：内置堆叠文本全关时，常规路径会把容器
+            // 一起压灭，进栈行被连带熄掉。按非游玩进栈行的存在与否把容器
+            // 恢复回去（无行则保持灭，不点亮空容器）。
+            if (_mainContainer) _mainContainer.SetActive(HasOutsidePlayStackLines());
+        }
+    }
+
+    // ===== 自定义文本行（可增删，模板求值） =====
+
+    /// <summary>按配置增删文本对象。只有「行数 / 进栈方式 / 字号」变化才重建，
+    /// 模板内容变化只换文字——否则拖动滑条时每帧销毁重建 TMP 会卡。 </summary>
+    internal void MaybeRebuildCustomTexts()
+    {
+        var lines = Main.Settings?.CustomTexts;
+        var sig = BuildCustomSignature(lines);
+        if (sig == _customTextSignature) return;
+        _customTextSignature = sig;
+        RebuildCustomTexts(lines);
+    }
+
+    private static string BuildCustomSignature(List<CustomTextLine> lines)
+    {
+        if (lines == null) return "0";
+        var sb = new StringBuilder(lines.Count * 12 + 8);
+        sb.Append(lines.Count);
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            if (l == null) { sb.Append("|null"); continue; }
+            sb.Append('|').Append(l.InStack ? 'S' : 'F').Append(',').Append(l.FontSize);
+        }
+        return sb.ToString();
+    }
+
+    private void RebuildCustomTexts(List<CustomTextLine> lines)
+    {
+        for (int i = 0; i < CustomTexts.Count; i++)
+            if (CustomTexts[i]) Object.Destroy(CustomTexts[i].gameObject);
+        CustomTexts.Clear();
+        if (lines == null) return;
+        var s = Main.Settings;
+        int mainSize = s?.MainFontSize ?? 25;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            bool inStack = line == null || line.InStack;
+            var go = new GameObject("CustomText" + i);
+            var rt = go.AddComponent<RectTransform>();
+            rt.SetParent(inStack && _mainContainer ? _mainContainer.transform : Canvas.transform, false);
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
+            rt.sizeDelta = new Vector2(456, 30);
+            // 初始位置：进栈行按主栈流式排（菜单模式首次点亮时还没跑过 SetupLocation，
+            // 不给初值会堆在 (0,0)）；自由行直接落配置偏移。
+            rt.anchoredPosition = inStack
+                ? new Vector2(228, -15f - 35f * i)
+                : new Vector2(16f + (line?.OffsetX ?? 0f), -16f + (line?.OffsetY ?? 0f));
+            var text = go.AddComponent<TextMeshProUGUI>();
+            text.font = FontManager.GetFont(s.GetFontIndexForSlot(Settings.FontSlot.Main));
+            text.fontSize = line != null && line.FontSize > 0 ? line.FontSize : mainSize;
+            text.alignment = line != null && line.Align >= 0 ? (TextAlignmentOptions)line.Align : (TextAlignmentOptions)s.MainAlign;
+            text.fontStyle = line != null && line.Style >= 0 ? (FontStyles)line.Style : (FontStyles)s.MainStyle;
+            text.color = line != null && line.TextColor != null ? (Color)line.TextColor : Color.white;
+            ShadowManager.ApplyShadow(text, line != null && line.EffectOverride && line.Effect != null
+                ? line.Effect : s.GetEffectForSlot(Settings.FontSlot.Main));
+            CustomTexts.Add(text);
+        }
+    }
+
+    /// <summary>自由坐标行的位置（栈行由 ExtendedOverlayModule.SetupLocation 排）。</summary>
+    private void ApplyCustomTextPositions()
+    {
+        var lines = Main.Settings?.CustomTexts;
+        if (lines == null) return;
+        for (int i = 0; i < CustomTexts.Count && i < lines.Count; i++)
+        {
+            var text = CustomTexts[i];
+            var line = lines[i];
+            if (!text || line == null || line.InStack) continue;
+            text.rectTransform.anchoredPosition = new Vector2(16f + line.OffsetX, -16f + line.OffsetY);
+        }
+    }
+
+    /// <summary>按 ~10Hz 求值并刷新自定义行。空模板/未启用 = 隐藏。</summary>
+    internal void RefreshCustomTexts()
+    {
+        var lines = Main.Settings?.CustomTexts;
+        if (lines == null) return;
+        for (int i = 0; i < CustomTexts.Count && i < lines.Count; i++)
+        {
+            var text = CustomTexts[i];
+            var line = lines[i];
+            if (!text) continue;
+            // 非游玩显示模式（_outsidePlayActive）下，只有勾了「非游玩时显示」的行参与渲染。
+            bool on = line != null && line.Enabled && !string.IsNullOrEmpty(line.Template)
+                && (!_outsidePlayActive || line.ShowOutsidePlay);
+            if (!on)
+            {
+                text.enabled = false;
+                continue;
+            }
+            text.enabled = true;
+            text.text = TemplateEngine.Evaluate(line.Template) ?? "";
+            text.color = line != null && line.TextColor != null ? (Color)line.TextColor : Color.white;
+        }
+    }
+
+    /// <summary>是否存在「非游玩也显示」的启用行（决定菜单里是否点亮画布）。</summary>
+    private bool HasOutsidePlayLines()
+    {
+        var lines = Main.Settings?.CustomTexts;
+        if (lines == null) return false;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            if (l != null && l.Enabled && l.ShowOutsidePlay && !string.IsNullOrEmpty(l.Template)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>是否存在「非游玩也显示」且进栈的行（决定菜单里是否需要主容器）。</summary>
+    private bool HasOutsidePlayStackLines()
+    {
+        var lines = Main.Settings?.CustomTexts;
+        if (lines == null) return false;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            if (l != null && l.Enabled && l.InStack && l.ShowOutsidePlay && !string.IsNullOrEmpty(l.Template)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>模板是否含逐帧动画 tag（EasedValue/MovingMan）——宿主行需要每帧重绘才有连续动画。</summary>
+    private static bool IsAnimated(string template) => IsAnimated(template, 0);
+
+    /// <summary>同上层，但会把自定义组合 tag 展开检查（深度 3 防环）：
+    /// 自定义 tag 里包了动画时，宿主行同样要逐帧重绘，否则动画只有 10Hz。</summary>
+    private static bool IsAnimated(string template, int depth)
+    {
+        if (string.IsNullOrEmpty(template)) return false;
+        if (template.Contains("EasedValue(") || template.Contains("MovingMan(")) return true;
+        if (depth >= 3) return false;
+        var defs = Main.Settings?.CustomTags;
+        if (defs == null) return false;
+        for (int i = 0; i < defs.Count; i++)
+        {
+            var def = defs[i];
+            if (def == null || string.IsNullOrEmpty(def.Name)) continue;
+            // 自定义组合 tag 不带参数，模板里的形态只有 {Name} / {Name:format}。
+            if (template.IndexOf("{" + def.Name, StringComparison.Ordinal) < 0) continue;
+            if (IsAnimated(def.Template, depth + 1)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>连击模板是否含动画 tag。</summary>
+    internal bool ComboTemplateAnimated => IsAnimated(Main.Settings?.Labels.ComboTemplate);
+
+    /// <summary>任一启用的自定义行含动画 tag。</summary>
+    internal bool HasAnimatedCustomTexts()
+    {
+        var lines = Main.Settings?.CustomTexts;
+        if (lines == null) return false;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var l = lines[i];
+            if (l != null && l.Enabled && IsAnimated(l.Template)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>逐帧刷新连击模板。字号弹跳动画由 StartComboBump 独立驱动，这里只更新文字内容，互不冲突。</summary>
+    internal void RefreshComboTemplate()
+    {
+        if (ComboText) TemplateEngine.TryApply(Main.Settings.Labels.ComboTemplate, ComboText);
+    }
+
+    // ===== 非游玩显示模式（自定义文本行在菜单/结算也可见）=====
+
+    private bool _outsidePlayActive;
+    internal bool OutsidePlayActive => _outsidePlayActive;
+    private float _lastOutsidePlayLog = -999f;
+
+    /// <summary>由 Main.OnUpdate 每帧调用：开关开启且 overlay 被隐藏（菜单/结算）时点亮画布，
+    /// 但隐藏全部内置元素、只渲染自定义文本行；进关卡（Show）时恢复内置元素。</summary>
+    internal void UpdateOutsidePlayMode()
+    {
+        var s = Main.Settings;
+        // 模组被禁用时不得点亮画布（Main.Disable 会 Hide，这里若再激活就成了「禁用后仍在菜单显示」）。
+        // 不能用 !GameObject.activeSelf 做「非游玩」判定——进入本模式的第一件事就是点亮画布，
+        // 下一帧条件反转 → 熄灭 → 再点亮，画布每帧振荡（用户看到的「一直闪」）。
+        // 游玩会话 = scnGame 场景，或编辑器 play 模式（含 play 内暂停）；编辑器「编辑界面」
+        // 属于非游玩。此前用 !IsGameReady 判定，但编辑器里 controller/conductor 齐全且
+        // isGameWorld=true，IsGameReady 恒为 true，勾了「非游玩时显示」的行在编辑器里从不出现
+        // （口径参照 Overlayer.Module.ADOFAI 的 IsPlaying：编辑器只在 play 模式算游玩）。
+        bool inLevel = GameRefs.IsScnGame || (GameRefs.EditorInstance != null && GameRefs.EditorPlayMode);
+        bool want = Main.IsEnabled && HasOutsidePlayLines() && GameObject != null && !inLevel;
+        if (want && !_outsidePlayActive)
+        {
+            _outsidePlayActive = true;
+            EnterOutsidePlayMode();
+        }
+        else if (want && _outsidePlayActive && !GameObject.activeSelf)
+        {
+            // 模式激活期间 Hide()（场景卸载 / 擦黑转场 / 编辑器 ResetScene / 加载场景）
+            // 可能把画布压灭；标志仍是激活态就不会重走 Enter，画布从此黑到底，
+            // 自定义行在非游玩界面全部消失。检测到被外部熄灭就补一次完整恢复。
+            EnterOutsidePlayMode();
+        }
+        else if (!want && _outsidePlayActive)
+        {
+            _outsidePlayActive = false;
+            ExitOutsidePlayMode();
+        }
+        // 诊断（临时）：每 2 秒采样一次状态机，排查「进关后仍被当成非游玩」这类误判。
+        if (Time.realtimeSinceStartup - _lastOutsidePlayLog >= 2f)
+        {
+            _lastOutsidePlayLog = Time.realtimeSinceStartup;
+            Loader.Log($"[OutsidePlay] state: inLevel={inLevel} IsScnGame={GameRefs.IsScnGame} " +
+                $"editorInst={GameRefs.EditorInstance != null} editorPlay={GameRefs.EditorPlayMode} " +
+                $"want={want} flag={_outsidePlayActive} bar={_progressBarObject != null && _progressBarObject.activeSelf} " +
+                $"go={GameObject != null && GameObject.activeSelf}");
+        }
+    }
+
+    private void EnterOutsidePlayMode()
+    {
+        var s = Main.Settings;
+        // 诊断：定位「进度条消失」时能直接看到进入非游玩模式的原因与当时状态。
+        Loader.Log($"[OutsidePlay] enter: IsScnGame={GameRefs.IsScnGame} EditorPlay={GameRefs.EditorPlayMode} barActive={_progressBarObject != null && _progressBarObject.activeSelf}");
+        GameObject.SetActive(true);
+        if (_mono) _mono.enabled = true;
+        if (_mainContainer) _mainContainer.SetActive(HasOutsidePlayStackLines());
+        // 只在首次进入时拍快照：自愈路径会重复调用 Enter，二次快照会把「全隐藏」记成原状。
+        if (_builtInSnapshotTexts.Count == 0) SnapshotBuiltInTexts();
+        SetBuiltInOverlayTextsEnabled(false);
+        if (_progressBarObject) _progressBarObject.SetActive(false);
+        // 菜单里解除游玩状态门控：组合 tag/模板直接求实时值，
+        // 否则「从未在游玩中求值过」的 tag 会永远显示原文（{Combo} 闪原文即此）。
+        TagManager.IgnoreGating = true;
+        MaybeRebuildCustomTexts();
+        // 进栈行按非游玩流式重排（固定栈顶起排）：否则进菜单后行停在游玩时的旧栈位，
+        // 直到打开设置触发 RefreshVisibility 才重排——表现为「一开设置文本位置就偏移」。
+        ExtendedOverlay?.SetupLocation();
+        RefreshCustomTexts();
+    }
+
+    private void ExitOutsidePlayMode()
+    {
+        TagManager.IgnoreGating = false;
+        // 进度条先恢复：它是 Enter 里唯一被 SetActive 隐藏的 GameObject，必须在这里按设置
+        // 点回来，否则从菜单/结算进关整关都没有进度条。放在文本恢复之前，文本恢复即使
+        // 抛异常也不会连带把进度条留在隐藏态。
+        if (_progressBarObject) _progressBarObject.SetActive(Main.Settings?.ShowProgressBar ?? false);
+        RestoreBuiltInTexts();
+        Loader.Log($"[OutsidePlay] exit: IsScnGame={GameRefs.IsScnGame} EditorPlay={GameRefs.EditorPlayMode} showBar={Main.Settings?.ShowProgressBar} barActive={_progressBarObject != null && _progressBarObject.activeSelf}");
+        GameObject.SetActive(false);
+        if (_mono) _mono.enabled = false;
+    }
+
+    /// <summary>收集全部内置文本组件（自定义行不在名单里，不受影响）。</summary>
+    private void CollectBuiltInTexts(List<TMPro.TextMeshProUGUI> texts)
+    {
+        texts.Clear();
+        texts.Add(ProgressText); texts.Add(AccuracyText); texts.Add(XAccuracyText);
+        texts.Add(TimeText); texts.Add(MapTimeText); texts.Add(CheckpointText);
+        texts.Add(BestText); texts.Add(BPMText); texts.Add(TimingScaleText);
+        texts.Add(AttemptText); texts.Add(HitOffsetText); texts.Add(ComboTitle);
+        texts.Add(ComboText); texts.Add(DeathText); texts.Add(StateText);
+        var ext = ExtendedOverlay;
+        if (ext != null)
+        {
+            texts.Add(ext.FPSText); texts.Add(ext.AuthorText); texts.Add(ext.StartText);
+            texts.Add(ext.TimingText); texts.Add(ext.AvgTimingText); texts.Add(ext.XScoreText);
+            texts.Add(ext.PotentialAccuracyText); texts.Add(ext.PotentialXAccuracyText); texts.Add(ext.PotentialXScoreText);
+        }
+        foreach (var jt in JudgementTexts) if (jt) texts.Add(jt);
+    }
+
+    // 非游玩模式的内置文本可见性账本：进入前记录、退出时原样恢复。
+    private readonly List<TMPro.TextMeshProUGUI> _builtInScratch = new();
+    private readonly List<TMPro.TextMeshProUGUI> _builtInSnapshotTexts = new();
+    private readonly List<bool> _builtInSnapshotEnabled = new();
+
+    /// <summary>批量开关内置文本组件。只动 TMP 的 enabled，不碰各 GameObject 的激活态——
+    /// 那些由 RefreshVisibility 按设置管理。</summary>
+    private void SetBuiltInOverlayTextsEnabled(bool on)
+    {
+        CollectBuiltInTexts(_builtInScratch);
+        for (int i = 0; i < _builtInScratch.Count; i++) if (_builtInScratch[i]) _builtInScratch[i].enabled = on;
+    }
+
+    /// <summary>进入非游玩模式前记录内置文本的 enabled（含已被设置关掉的行）。</summary>
+    private void SnapshotBuiltInTexts()
+    {
+        CollectBuiltInTexts(_builtInSnapshotTexts);
+        _builtInSnapshotEnabled.Clear();
+        for (int i = 0; i < _builtInSnapshotTexts.Count; i++)
+            _builtInSnapshotEnabled.Add(_builtInSnapshotTexts[i] ? _builtInSnapshotTexts[i].enabled : true);
+    }
+
+    /// <summary>恢复进入非游玩模式前的 enabled。不能全量置真：那会把用户关掉、但仍留着
+    /// 上一局内容的行一起点亮，而 Show 只在 AnyStackedTextVisible 时才重算可见性，
+    /// 只开连击/判定的配置下就会冒出残留文本。没有快照时退回全量点亮。</summary>
+    private void RestoreBuiltInTexts()
+    {
+        if (_builtInSnapshotTexts.Count == 0) { SetBuiltInOverlayTextsEnabled(true); return; }
+        for (int i = 0; i < _builtInSnapshotTexts.Count; i++)
+        {
+            var text = _builtInSnapshotTexts[i];
+            if (text) text.enabled = i < _builtInSnapshotEnabled.Count && _builtInSnapshotEnabled[i];
+        }
+        _builtInSnapshotTexts.Clear();
+        _builtInSnapshotEnabled.Clear();
     }
 
     private static void AdjustBetaWatermark(float size)
@@ -935,12 +1341,12 @@ public class Overlay
             if (line == 0 && showA)
             {
                 if (_attemptSb.Length > 0) _attemptSb.Append('\n');
-                _attemptSb.Append($"{labels.Attempt} {attemptCount}");
+                _attemptSb.Append(TemplateEngine.Evaluate(labels.AttemptTemplate) ?? $"{labels.Attempt} {attemptCount}");
             }
             else if (line == 1 && showF)
             {
                 if (_attemptSb.Length > 0) _attemptSb.Append('\n');
-                _attemptSb.Append($"{labels.FullAttempt} {fullAttemptCount}");
+                _attemptSb.Append(TemplateEngine.Evaluate(labels.FullAttemptTemplate) ?? $"{labels.FullAttempt} {fullAttemptCount}");
             }
         }
         AttemptText.SetText(_attemptSb);
@@ -987,12 +1393,20 @@ public class Overlay
                 string hex = VersionSafe.GetPlayerColorHex(p);
                 string prefix = $"<color=#{hex}>P{p + 1}</color> ";
                 string suffix = $" <color=#{hex}>P{p + 1}</color>";
-                JudgementTexts[p].text = BuildJudgementString(h, useXPerfect, prefix, suffix, p);
+                // coop 判定行按玩家逐个渲染同一模板：带玩家上下文，
+                // 模板里 {XPerfect} / {PColor} 这类未写序号的 tag 自动落到该玩家。
+                if (TemplateEngine.TryApply(Main.Settings.Labels.JudgementTemplate, JudgementTexts[p], p))
+                    JudgementTexts[p].color = JudgementDefaultColor;
+                else
+                    JudgementTexts[p].text = BuildJudgementString(h, useXPerfect, prefix, suffix, p);
             }
         }
         else
         {
-            JudgementTexts[0].text = BuildJudgementString(Hit, useXPerfect);
+            if (TemplateEngine.TryApply(Main.Settings.Labels.JudgementTemplate, JudgementTexts[0]))
+                JudgementTexts[0].color = JudgementDefaultColor;
+            else
+                JudgementTexts[0].text = BuildJudgementString(Hit, useXPerfect);
         }
     }
 
@@ -1063,10 +1477,14 @@ public class Overlay
     public void UpdateCombo(int combo, bool bump)
     {
         if (!GameObject.activeSelf) return;
-        _comboSb.Clear();
-        _comboSb.Append(combo);
-        ComboText.SetText(_comboSb);
-        ComboText.color = UpdateComboColor(combo);
+        if (combo > MaxCombo) MaxCombo = combo;
+        if (!TemplateEngine.TryApply(Main.Settings.Labels.ComboTemplate, ComboText))
+        {
+            _comboSb.Clear();
+            _comboSb.Append(combo);
+            ComboText.SetText(_comboSb);
+            ComboText.color = UpdateComboColor(combo);
+        }
         bool reversed = Main.Settings.ComboLineReversed;
         if (bump) { if (_mono) _mono.StartComboBump(); }
         else
@@ -1167,6 +1585,10 @@ public class Overlay
     internal string BuildTimingWindowLines(in TimingWindowCalculator.Result tw)
     {
         var s = Main.Settings;
+        // 模板接管：整段判定时间窗由模板决定（{PerfectMs} / {GreatMs} / {GoodMs} / {XPerfectMs}），
+        // 行首补一个换行让它接在 BPM 文本下方，行间换行由模板里的 {Newline} 控制。
+        string twTpl = TemplateEngine.Evaluate(s.Labels.TimingWindowTemplate);
+        if (twTpl != null) return "\n" + twTpl;
         _twSb.Clear();
         var twSep = s.Labels.TimingWindowSeparator;
         if (tw.XPerfectValid)
@@ -1201,14 +1623,23 @@ public class Overlay
             switch (id)
             {
                 case 0: // Tile BPM
-                    _bpmSb.Append($"<color=white>{labels.TBPM}{labels.TBPMSeparator}<color=#{hex}>{Math.Round(tileBpm, 2)}</color></color>");
+                {
+                    string tpl = TemplateEngine.Evaluate(labels.TbpmTemplate);
+                    _bpmSb.Append(tpl ?? $"<color=white>{labels.TBPM}{labels.TBPMSeparator}<color=#{hex}>{Math.Round(tileBpm, 2)}</color></color>");
                     break;
+                }
                 case 1: // Current BPM
-                    _bpmSb.Append($"<color=white>{labels.CBPM}{labels.CBPMSeparator}</color>{Math.Round(curBpm, 2)}");
+                {
+                    string tpl = TemplateEngine.Evaluate(labels.CbpmTemplate);
+                    _bpmSb.Append(tpl ?? $"<color=white>{labels.CBPM}{labels.CBPMSeparator}</color>{Math.Round(curBpm, 2)}");
                     break;
+                }
                 case 2: // KPS
-                    _bpmSb.Append($"<color=white>{labels.KPS}{labels.KPSSeparator}</color>{kpsPrefix}{Math.Round(kps, 2)}{kpsSuffix}");
+                {
+                    string tpl = TemplateEngine.Evaluate(labels.KpsTemplate);
+                    _bpmSb.Append(tpl ?? $"<color=white>{labels.KPS}{labels.KPSSeparator}</color>{kpsPrefix}{Math.Round(kps, 2)}{kpsSuffix}");
                     break;
+                }
             }
         }
         return _bpmSb.ToString();
@@ -1274,6 +1705,7 @@ public class Overlay
         float cur = (float)Math.Round(GameRefs.CurrentFloor.marginScale * 100, 2);
         if (Math.Abs(cur - _lastTimingScale) < 0.001f) return;
         _lastTimingScale = cur;
+        if (TemplateEngine.TryApply(Main.Settings.Labels.TimingScaleTemplate, TimingScaleText)) return;
         _timingSb.Clear();
         _timingSb.Append(Main.Settings.Labels.TimingScale);
         _timingSb.Append(Main.Settings.Labels.TimingScaleSeparator);
@@ -1285,6 +1717,8 @@ public class Overlay
     /// <summary>自定义标签编辑后强制重绘全部文本：先清空各更新路径的"值未变则跳过"节流，再逐个刷新。</summary>
     internal void RefreshAllTexts()
     {
+        MaybeRebuildCustomTexts();
+        RefreshCustomTexts();
         if (ComboTitle)
             ComboTitle.text = ExtendedOverlay is { IsAltComboTitle: true }
                 ? Main.Settings.Labels.ComboTitleAlt
@@ -1323,7 +1757,10 @@ public class Overlay
             && _lastShownSeqID == floor
             && _lastShownCheckpoints == GameRefs.CheckpointsUsed
             && _lastShownPlayers == VersionSafe.GetPlayerCount()
-            && LastHash.Equals(hash))
+            && LastHash.Equals(hash)
+            // 非游玩显示模式曾点亮画布（隐藏了全部内置元素）：去重前必须先恢复，
+            // 否则整关的内置 UI 都停留在菜单模式的隐藏态。
+            && !_outsidePlayActive)
         {
             // Main.Enable 的主动首显与随后到达的 scnGame.Play 是同一局的同一格，
             // 不应再次 AddAttempts/重置统计；也不要把已经推进的 Progress 写回起点。
@@ -1331,8 +1768,20 @@ public class Overlay
             ApplyPositionOffsets();
             return;
         }
+        // 去重未命中的路径同样可能处于非游玩显示模式（如开关开启后从菜单进关）。
+        if (_outsidePlayActive)
+        {
+            _outsidePlayActive = false;
+            RestoreBuiltInTexts();
+            if (_progressBarObject) _progressBarObject.SetActive(s.ShowProgressBar);
+        }
         _shownByEnable = false;
+        // 会话尝试计数（{SessionAttempts}）：每次真实开局（含死亡重试）计一次。
+        Tags.GameTags.SessionAttemptCount++;
         ExtendedOverlay?.OnShow(floor);
+        // 进关必须按设置恢复进度条：此前只有「非游玩恢复块」里才 SetActive，
+        // 一旦 Exit 因异常/时序被跳过，整关都没有进度条，且 Show 自己不会再点回来。
+        if (_progressBarObject) _progressBarObject.SetActive(s.ShowProgressBar);
         // 每次显示都同步自定义标签——覆盖层隐藏期间编辑的标签也能生效。
         // OnShow 已把 _perToCom 复位（备用标题状态归零），文本必须同步复位，
         // 否则死亡/checkpoint 重试后标题停留在 Combo 而状态已是 Perfect。
@@ -1362,6 +1811,23 @@ public class Overlay
         ApplyFontToAll();
         GameObject.SetActive(true);
         if (_mono) _mono.enabled = true;
+        // 退出非游玩显示模式：恢复被菜单模式隐藏的内置元素可见性。
+        if (_outsidePlayActive)
+        {
+            _outsidePlayActive = false;
+            RestoreBuiltInTexts();
+            if (_progressBarObject) _progressBarObject.SetActive(s.ShowProgressBar);
+        }
+        TagManager.IgnoreGating = false;
+        // 连击计数必须在本局任何文本渲染之前归零：ComboTemplate 里的 {Combo} 与自定义行的 {Combo}
+        // 读的都是这个静态计数。原先放在渲染块之后，模板先拿到上一局的旧值且不再重写
+        // （内置路径写字面参数 0，所以只有用模板才能看出「重开不清零」）。
+        Features.GameLifecycleHelper.ComboCount = 0;
+        MaxCombo = 0;
+        // MarginCombo/MarginSequence 的判定序列快照一并清掉：检查点读档与
+        // RevertToLastCheckpoint 是对同一 List 的原地修改，引用失效判据看不见；
+        // 重开局强制重拷一次，防未知原地修改路径残留旧快照。
+        Tags.GameTags.ResetMarginSequenceCache();
         SongPlaying = false; IsDeath = false;
         // ShowCombo 单独开启时没有主栈，UpdateProgress 不会走；连击配色仍需
         // 以本次判定的纯完美状态为基准，不能一直沿用 OnShow 的初始 true。
@@ -1376,8 +1842,10 @@ public class Overlay
         }
         // 任意可栈排元素开启即需要布局（原条件漏了 Accuracy/XAccuracy/MapTime，
         // 只开精度时栈不会被摆位——顺手修正；XScore/潜力值同样并入）
+        MaybeRebuildCustomTexts();
         if (s.AnyStackedTextVisible)
             SetupLocationMain();
+        RefreshCustomTexts();
         // 精度补丁通常会在 CalculatePercentAcc 的后缀里刷新，但补丁可能因版本/开关
         // 探测失败而缺席；开局至少主动渲染一次，避免文本留空到下一击。
         if (s.ShowAccuracy || s.ShowXAccuracy || (s.ShowXScore && HitMarginCompat.HasNativeXPerfect))
@@ -1399,7 +1867,6 @@ public class Overlay
         ApplyPositionOffsets();
         ApplyAlignment();
         ApplyFontStyle();
-        Features.GameLifecycleHelper.ComboCount = 0;
         if (!suppressNativeUI && s.RepositionAutoText) RepositionAutoText(s.AnyStackedTextVisible, s.Size);
         _lastShownSeqID = floor;
         _lastShownCheckpoints = GameRefs.CheckpointsUsed;
@@ -1439,6 +1906,9 @@ public class Overlay
             GameObject.SetActive(false);
             if (_mono) _mono.enabled = false;
         }
+        // 离开关卡后「局内启用的主动首显」这一去重前提已不存在，必须失效，
+        // 否则非游玩显示模式点亮画布后进关，Show 的去重会跳过完整初始化。
+        _shownByEnable = false;
         bool dataChanged = false;
         try
         {

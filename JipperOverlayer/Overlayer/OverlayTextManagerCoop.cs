@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using JipperOverlayer.Overlayer.Tags;
 using JipperOverlayer.Overlayer.Util;
 using UnityEngine;
 
@@ -106,10 +107,13 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             else if (index >= 0 && index < PlayerDatas.Length)
                 SetAccuracy(ref PlayerDatas[index], overlay, index);
 
-            _sb.Clear();
-            _sb.Append(Main.Settings.Labels.Accuracy);
-            for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].AccuracyCache.AppendTo(_sb);
-            overlay.AccuracyText.SetText(_sb);
+            if (!TemplateEngine.TryApply(s.Labels.AccuracyTemplate, overlay.AccuracyText))
+            {
+                _sb.Clear();
+                _sb.Append(Main.Settings.Labels.Accuracy);
+                for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].AccuracyCache.AppendTo(_sb);
+                overlay.AccuracyText.SetText(_sb);
+            }
         }
         if (Main.Settings.ShowXAccuracy)
         {
@@ -119,10 +123,13 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             else if (index >= 0 && index < PlayerDatas.Length)
                 SetXAccuracy(ref PlayerDatas[index], index);
 
-            _sb.Clear();
-            _sb.Append(Main.Settings.Labels.XAccuracy);
-            for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].XAccuracyCache.AppendTo(_sb);
-            overlay.XAccuracyText.SetText(_sb);
+            if (!TemplateEngine.TryApply(s.Labels.XAccuracyTemplate, overlay.XAccuracyText))
+            {
+                _sb.Clear();
+                _sb.Append(Main.Settings.Labels.XAccuracy);
+                for (int i = 0; i < PlayerDatas.Length; i++) PlayerDatas[i].XAccuracyCache.AppendTo(_sb);
+                overlay.XAccuracyText.SetText(_sb);
+            }
         }
         if (s.ShowXScore && HitMarginCompat.HasNativeXPerfect)
         {
@@ -133,7 +140,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
                 SetXScore(ref PlayerDatas[index], index);
 
             var xs = overlay.ExtendedOverlay?.XScoreText;
-            if (xs)
+            if (xs && !TemplateEngine.TryApply(s.Labels.XScoreTemplate, xs))
             {
                 // 各段分隔符在 rich text 标签之外，继承组件底色；单人路径
                 // SetDualText 会把底色写成渐变色（开局 t=1 即 PerfectColor），coop
@@ -298,6 +305,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
 
     public void UpdateProgress(Overlay overlay)
     {
+        if (TemplateEngine.TryApply(Main.Settings.Labels.ProgressTemplate, overlay.ProgressText)) return;
         _sb.Clear();
         _sb.Append(Main.Settings.Labels.Progress);
         if (overlay.StartTile > 0)
@@ -330,6 +338,11 @@ public class OverlayTextManagerCoop : IOverlayTextManager
             CurCheck++; updated = true;
         }
         if (LastCheckpoint == GameRefs.CheckpointsUsed && !updated) return;
+        if (TemplateEngine.TryApply(Main.Settings.Labels.CheckpointTemplate, overlay.CheckpointText))
+        {
+            LastCheckpoint = GameRefs.CheckpointsUsed;
+            return;
+        }
         _sb.Clear();
         _sb.Append("<color=white>");
         _sb.Append(Main.Settings.Labels.Checkpoint);
@@ -358,6 +371,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
 
     public void UpdateBestText(Overlay overlay)
     {
+        if (TemplateEngine.TryApply(Main.Settings.Labels.BestTemplate, overlay.BestText)) return;
         float best = CurBest > MaxProgress || overlay.AutoOnceEnabled ? CurBest : MaxProgress;
         _sb.Clear();
         _sb.Append("<color=white>");
@@ -388,6 +402,7 @@ public class OverlayTextManagerCoop : IOverlayTextManager
     {
         var s = Main.Settings;
         if (!s.ShowDeath || !overlay.GameObject.activeSelf || overlay.DeathText == null) return;
+        if (TemplateEngine.TryApply(s.Labels.DeathTemplate, overlay.DeathText)) return;
         int count = VersionSafe.GetPlayerCount();
         if (_playerDeath == null || _playerDeath.Length != count)
         {
@@ -419,33 +434,45 @@ public class OverlayTextManagerCoop : IOverlayTextManager
         overlay.DeathText.color = Color.white;
     }
 
-    public void UpdateState(Overlay overlay, bool _)
+    /// <summary>状态文本（不含标签前缀）：UpdateState 与 {State} tag 共用这一份判定分支。</summary>
+    public string GetStateString(Overlay overlay, bool _, out Color color)
     {
-        var s = Main.Settings;
-        if (!s.ShowState || !overlay.GameObject.activeSelf || overlay.StateText == null) return;
-        var labels = s.Labels;
+        var labels = Main.Settings.Labels;
         int count = VersionSafe.GetPlayerCount();
-        var sb = _sb;
-        sb.Clear();
-        sb.Append("<color=white>");
-        sb.Append(labels.State);
-        sb.Append("</color>");
+        _sb.Clear();
         for (int i = 0; i < count; i++)
         {
             if (!TryGetPlayer(i, out var p)) continue;
             int[] hits = VersionSafe.GetHitMarginsCountForPlayer(i);
             string state = GetPlayerState(p, hits, overlay);
             string hex = VersionSafe.GetPlayerColorHex(i);
-            sb.Append(s.Labels.StateSeparator);
-            sb.Append("<color=#");
-            sb.Append(hex);
-            sb.Append(">");
-            sb.Append(state);
-            sb.Append("</color>");
+            if (_sb.Length > 0) _sb.Append(labels.StateSeparator);
+            _sb.Append("<color=#");
+            _sb.Append(hex);
+            _sb.Append(">");
+            _sb.Append(state);
+            _sb.Append("</color>");
         }
-        if (overlay.StartTile != 0) { sb.Append("  "); sb.Append(labels.StateMidStart); }
-        overlay.StateText.SetText(sb);
-        overlay.StateText.color = Color.white;
+        if (overlay.StartTile != 0) { _sb.Append("  "); _sb.Append(labels.StateMidStart); }
+        color = Color.white;
+        return _sb.ToString();
+    }
+
+    public void UpdateState(Overlay overlay, bool isPurePerfect)
+    {
+        var s = Main.Settings;
+        if (!s.ShowState || !overlay.GameObject.activeSelf || overlay.StateText == null) return;
+        if (TemplateEngine.TryApply(s.Labels.StateTemplate, overlay.StateText)) return;
+        var labels = s.Labels;
+        string state = GetStateString(overlay, isPurePerfect, out var stateColor);
+        _sb.Clear();
+        _sb.Append("<color=white>");
+        _sb.Append(labels.State);
+        _sb.Append(labels.StateSeparator);
+        _sb.Append("</color>");
+        _sb.Append(state);
+        overlay.StateText.SetText(_sb);
+        overlay.StateText.color = stateColor;
     }
 
     private static string GetPlayerState(scrPlayer player, int[] hits, Overlay overlay)

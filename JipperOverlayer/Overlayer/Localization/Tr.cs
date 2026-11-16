@@ -62,6 +62,13 @@ public static class Tr
         LayoutEditorTitle, LayoutEditorHint, LayoutEditorSnap, LayoutEditorNotPlaying,
         LayoutEditorExit, LayoutEditorHidden, LayoutEditorUndo, LayoutEditorResetAll, LayoutEditorSave,
         SeparatorHint,
+        Templates, TemplateHint, CopyTagList, TagListCopied, ResetTemplates,
+        TagList, TagListHint, TagCopied,
+        CustomText, CustomTextHint, AddLine, StackLayout, FreeLayout,
+        PerLineAlign, PerLineStyle, FollowMain, TagSearch, TemplateExamples, ImportBuiltin, LineColor, ShowOutsidePlay, EffectTools, Insert, CustomTags, CustomTagHint, AddTag,
+        SfxGradient, SfxAnim, SfxEase, SizeHint,
+        AlignTL, AlignT, AlignTR, AlignL, AlignC, AlignR, AlignBL, AlignB, AlignBR,
+        StyleCompactRegular, StyleCompactBold, StyleCompactItalic, StyleCompactBoldItalic,
         Count
     }
 
@@ -125,7 +132,14 @@ public static class Tr
              "Layout Editor", "Click an element to select it, then drag to move. Alt = no snapping, Shift+Arrow = 10px.",
              "Snap to edges / centers", "Enter a level first to edit the layout.",
              "Exit editor", "(hidden)", "Undo", "Reset all", "Save",
-             "Small box right of each label row = separator between that label and its value. Default ' | '; Timing Scale / Hit Offset default ' - '. Empty = none." ],
+             "Small box right of each label row = separator between that label and its value. Default ' | '; Timing Scale / Hit Offset default ' - '. Empty = none.",
+             "Text Templates", "Syntax: {Tag}, {Tag:0.00}, {Tag(1)} = coop player index, {{ }} = literal brace. Empty = built-in rendering; a non-empty template replaces that whole line (colors via <color=#RRGGBB>).",
+             "Copy Tag List", "Tag list copied", "Reset Templates",
+             "Available Tags", "Every tag below works in any template. Click a tag name to copy it.", "Copied",
+             "Custom Text Lines", "Extra lines you define yourself. Each line is a template; choose Stack to flow with the main column, or Free to place it with its own X/Y offset.",
+             "Add Line", "Stack", "Free", "Align", "Style", "Main", "Search", "Examples", "Import Built-in", "Text colour", "Show outside play", "Effect tools", "Insert", "Custom tags", "Name = letters/digits/underscore. Template may reference any tag (incl. other custom tags; avoid cycles). Changes apply instantly.", "Add tag", "Gradient", "Animation", "Easing", "Template <size> tag wins",
+             "TL", "T", "TR", "L", "C", "R", "BL", "B", "BR",
+             "Regular", "B", "I", "B+I" ],
 
         /* 1  Korean */ [ "크기", "진행도 표시", "정확도 표시", "X정확도 표시",
             "음악 시간 표시", "맵 시간 표시", "음악 없을 때 맵 시간",
@@ -185,7 +199,14 @@ public static class Tr
              "레이아웃 편집기", "요소를 클릭해 선택하고 드래그해 이동. Alt = 스냅 해제, Shift+화살표 = 10px.",
              "가장자리/중앙에 스냅", "레이아웃을 편집하려면 먼저 레벨에 진입하세요.",
              "편집기 닫기", "(숨김)", "실행 취소", "전체 초기화", "저장",
-             "레이블 행 오른쪽 작은 입력칸 = 레이블과 값 사이 구분 기호. 기본 ' | ', 판정 스케일/타격 오차는 ' - '. 비우면 없음." ],
+             "레이블 행 오른쪽 작은 입력칸 = 레이블과 값 사이 구분 기호. 기본 ' | ', 판정 스케일/타격 오차는 ' - '. 비우면 없음.",
+             "텍스트 템플릿", "문법: {Tag}, {Tag:0.00}, {Tag(1)} = 협동 플레이어 번호, {{ }} = 리터럴 중괄호. 비우면 내장 렌더링, 값이 있으면 해당 줄 전체를 템플릿이 대체합니다 (색상은 <color=#RRGGBB>).",
+             "태그 목록 복사", "태그 목록을 복사했습니다", "템플릿 초기화",
+             "사용 가능한 태그", "아래 태그는 모든 템플릿에서 사용할 수 있습니다. 태그 이름을 클릭하면 복사됩니다.", "복사됨",
+             "사용자 정의 텍스트", "직접 추가하는 줄입니다. 각 줄은 템플릿이며, Stack 은 메인 열에 이어서, Free 는 자체 X/Y 위치로 배치합니다.",
+             "줄 추가", "스택", "자유", "정렬", "스타일", "메인", "검색", "예시", "내장 렌더링 가져오기", "텍스트 색상", "플레이 외 표시", "이펙트 도구", "삽입", "커스텀 태그", "이름 = 영문/숫자/밑줄. 템플릿은 모든 태그를 참조할 수 있습니다(다른 커스텀 태그 포함, 순환 금지). 변경 즉시 적용.", "태그 추가", "그라데이션", "애니메이션", "이징", "템플릿 <size> 태그가 우선",
+             "좌상", "상", "우상", "좌", "중", "우", "좌하", "하", "우하",
+             "보통", "B", "I", "B+I" ],
 
         /* 2  Chinese */ [ "大小", "显示进度", "显示准确率", "显示X准确率",
             "显示音乐时间", "显示地图时间", "无音乐时显示地图时间",
@@ -245,7 +266,14 @@ public static class Tr
              "布局编辑器", "点击元素选中，拖动即可移动。Alt = 关闭吸附，Shift+方向键 = 10px。",
              "吸附到边缘/中心", "请先进入关卡再编辑布局。",
              "退出编辑器", "（隐藏）", "撤销", "全部重置", "保存",
-             "每行右侧的小输入框 = 该项标签与数值之间的分隔符。默认 ' | '；判定区间/打击误差默认 ' - '；留空则不显示。" ],
+             "每行右侧的小输入框 = 该项标签与数值之间的分隔符。默认 ' | '；判定区间/打击误差默认 ' - '；留空则不显示。",
+             "文本模板", "语法：{Tag}、{Tag:0.00}、{Tag(1)} = 合作模式玩家序号，{{ }} = 字面花括号。留空 = 内置渲染；填了模板后该行整行由模板接管（颜色用 <color=#RRGGBB>）。",
+             "复制 tag 列表", "tag 列表已复制", "重置模板",
+             "可用 Tag 列表", "下列 tag 都能写进任意模板；点击 tag 名即可复制 {Tag}。", "已复制",
+             "自定义文本行", "自己新增的文本行。每行是一个模板：选「进栈」会接在主列后面自动往下排，选「自由」则用自己的 X/Y 定位。",
+             "添加一行", "进栈", "自由", "对齐", "样式", "主", "搜索", "示例", "导入内置渲染", "文本颜色", "非游玩时显示", "效果工具", "插入", "自定义 tag", "名称 = 字母/数字/下划线。模板可引用任意 tag（含其他自定义 tag，注意别成环）。改完立即生效。", "添加 tag", "渐变", "动画", "缓动", "模板 <size> 优先",
+             "左上", "上", "右上", "左", "中", "右", "左下", "下", "右下",
+             "常", "B", "I", "B+I" ],
     ];
 
     public static string Get(Key key)

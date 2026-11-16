@@ -41,6 +41,7 @@ public static class GameRefs
     // scnGame / scnEditor
     private static Func<scnGame> _getGameInstance;
     private static Func<scnEditor> _getEditorInstance;
+    private static Func<scnEditor, bool> _getEditorPlayMode;
 
     internal static void BindDelegates()
     {
@@ -91,6 +92,7 @@ public static class GameRefs
         // scnGame / scnEditor
         _getGameInstance   = TryStaticFieldGetter<scnGame>(typeof(scnGame), "instance");
         _getEditorInstance = TryStaticFieldGetter<scnEditor>(typeof(scnEditor), "instance");
+        _getEditorPlayMode = TryMemberGetter<scnEditor, bool>("playMode");
         // 与 VersionSafe 一样，只有全部绑定完成才置成功标志；异常回滚后
         // 下一次 Enable 会重新绑定，而不是沿用半初始化的静态状态。
         _delegatesBound = true;
@@ -188,6 +190,9 @@ public static class GameRefs
 
     // ========== scnEditor ==========
     public static scnEditor EditorInstance => _getEditorInstance?.Invoke();
+    /// <summary>编辑器是否处于 play 模式（含 play 内暂停）——编辑界面为 false。
+    /// 与 scnEditor.playMode 同源：非游玩模式用它区分「编辑界面」和「回放/试玩」。</summary>
+    public static bool EditorPlayMode => _getEditorPlayMode?.Invoke(EditorInstance) ?? false;
 
     // ========== Composite checks ==========
     public static bool IsGameReady =>

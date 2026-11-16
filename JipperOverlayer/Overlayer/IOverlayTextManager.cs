@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace JipperOverlayer.Overlayer;
 
 public interface IOverlayTextManager
@@ -18,6 +20,11 @@ public interface IOverlayTextManager
     // Extended-overlay helpers (coop-aware)
     void UpdateDeath(Overlay overlay);
     void UpdateState(Overlay overlay, bool isPurePerfect);
+
+    /// <summary>状态文本（不含标签前缀与分隔符），供 {State} tag 复用同一套判定分支。
+    /// color 为 UpdateState 原本要给文本设置的颜色。</summary>
+    string GetStateString(Overlay overlay, bool isPurePerfect, out Color color);
+
     bool CheckPurePerfect(Overlay overlay);
     int GetTooJudgement(Overlay overlay);
 }

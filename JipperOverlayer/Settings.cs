@@ -56,7 +56,24 @@ public class Settings
     /// 主容器一旦 SetActive(false)，其下所有文本都不渲染；布局也只在任一元素开启时才跑。
     /// 新增显示元素必须并入此处，否则会出现「开关打开、文本却永远不显示」。</summary>
     public bool AnyStackedTextVisible => ShowProgress || ShowAccuracy || ShowXAccuracy || ShowMusicTime
-        || ShowMapTime || ShowCheckpoint || ShowBest || ShowXScore || ExtendedStyleActive;
+        || ShowMapTime || ShowCheckpoint || ShowBest || ShowXScore || ExtendedStyleActive
+        || HasCustomStackText;
+
+    /// <summary>是否存在「参与主栈」的自定义行（它们同样需要主容器可见并参与布局）。</summary>
+    [JsonIgnore]
+    public bool HasCustomStackText
+    {
+        get
+        {
+            if (CustomTexts == null) return false;
+            for (int i = 0; i < CustomTexts.Count; i++)
+            {
+                var line = CustomTexts[i];
+                if (line != null && line.Enabled && line.InStack && !string.IsNullOrEmpty(line.Template)) return true;
+            }
+            return false;
+        }
+    }
     public float FPSRefreshRate = 0.2f;
     public int ExtendedDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
@@ -215,6 +232,11 @@ public class Settings
     public int[] AttemptLineOrder = [0, 1];
     public bool ComboLineReversed;
 
+    /// <summary>玩家自定义文本行（可增删，见 CustomTextLine）。</summary>
+    public List<CustomTextLine> CustomTexts = new();
+    /// <summary>用户自定义组合 tag（名称 → 模板片段，见 CustomTagDef / TagManager.SetCustomTags）。</summary>
+    public List<CustomTagDef> CustomTags = new();
+
     [JsonIgnore] public ColorConfig Colors;
     [JsonIgnore] public LabelConfig Labels;
     /// <summary>隐藏期间编辑过标签；下一次 Show 会主动重绘，避免沿用旧语言/旧缓存。</summary>
@@ -224,6 +246,10 @@ public class Settings
 
     public void OnGUI()
     {
+        // UMM 在同一次 IMGUI pass 里先画自己的控件再调本回调，其控件可能把
+        // GUI.changed 置真——不清零的话「有改动」会跨帧污染，RefreshVisibility
+        // 在设置窗口每帧都跑，非游玩模式下的行位置跟着游戏态条件漂移。
+        GUI.changed = false;
         DrawGeneralSection();
         bool needsVisibilityRefresh = GUI.changed;
         DrawDisplaySection();
@@ -233,6 +259,12 @@ public class Settings
         DrawTextEffectsSection();
         needsVisibilityRefresh |= GUI.changed;
         DrawLabelsSection();
+        needsVisibilityRefresh |= GUI.changed;
+        DrawTemplatesSection();
+        needsVisibilityRefresh |= GUI.changed;
+        DrawCustomTextsSection();
+        needsVisibilityRefresh |= GUI.changed;
+        DrawCustomTagsSection();
         needsVisibilityRefresh |= GUI.changed;
         DrawDiagnosticsSection();
         needsVisibilityRefresh |= GUI.changed;
@@ -1286,6 +1318,13 @@ public class Settings
     private static string _expandedOrder, _expandedFontSlot;
     private static bool _labelsFold;
     private static bool _diagnosticsFold;
+    private static bool _templateFold;
+    private static bool _tagHelpOpen;
+    private static string _tagSearch;
+    private static bool _customTextFold;
+    private static Vector2 _tagHelpScroll;
+    private static string _lastCopiedTag;
+    private static float _tagsCopiedUntil;
     private static float _diagnosticsCopiedUntil;
     private static readonly ColorCache _globalBaseColor = new(Color.white);
     private static readonly Color[] _presetColors = [Color.red, new Color(1, 0.5f, 0), Color.yellow, Color.green, new Color(0.34f, 0.8f, 1), Color.blue, new Color(0.6f, 0.2f, 1)];
@@ -1432,6 +1471,826 @@ public class Settings
         GUILayout.EndHorizontal();
     }
 
+    /// <summary>文本模板独立分区：模板输入 + 可用 tag 一览。
+    /// 刻意与「自定义标签」分开——模板不是改标签文字，而是整行重写，混在一起玩家很难发现。</summary>
+    /// <summary>自定义文本行：可增删的列表，每行一个模板 + 定位方式（进栈 / 自由坐标）。
+    /// 与固定槽位不同，这些行由 Overlay 在配置变化时动态创建，见 Overlay.RebuildCustomTexts。</summary>
+    static int CycleValue(int current, int[] seq)
+    {
+        int idx = Array.IndexOf(seq, current);
+        return seq[(idx + 1) % seq.Length];
+    }
+
+    static string StyleLabel(int style) => style switch
+    {
+        0 => Tr.Get(Tr.Key.StyleCompactRegular),
+        1 => Tr.Get(Tr.Key.StyleCompactBold),
+        2 => Tr.Get(Tr.Key.StyleCompactItalic),
+        3 => Tr.Get(Tr.Key.StyleCompactBoldItalic),
+        _ => style.ToString(),
+    };
+
+    void DrawCustomTextsSection()
+    {
+        if (GUILayout.Button($"{( _customTextFold ? "▼" : "▷")} {Tr.Get(Tr.Key.CustomText)}", GUI.skin.label, GUILayout.ExpandWidth(true)))
+            _customTextFold = !_customTextFold;
+        if (!_customTextFold) return;
+        GUI.changed = false;
+
+        HelpLabel(Tr.Get(Tr.Key.CustomTextHint));
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        if (GUILayout.Button(Tr.Get(Tr.Key.AddLine), GUILayout.Width(120)))
+        {
+            CustomTexts.Add(new CustomTextLine());
+            GUI.changed = true;
+        }
+        GUILayout.Label($"({CustomTexts.Count})");
+        GUILayout.EndHorizontal();
+
+        int remove = -1;
+        bool lookChanged = false;
+        for (int i = 0; i < CustomTexts.Count; i++)
+        {
+            var line = CustomTexts[i];
+            if (line == null) { remove = i; continue; }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(20);
+            line.Enabled = GUILayout.Toggle(line.Enabled, "", GUILayout.Width(18));
+            line.ShowOutsidePlay = GUILayout.Toggle(line.ShowOutsidePlay, Tr.Get(Tr.Key.ShowOutsidePlay), GUILayout.Width(96));
+            GUILayout.Label("#" + (i + 1), GUILayout.Width(30));
+            if (GUILayout.Button(line.InStack ? Tr.Get(Tr.Key.StackLayout) : Tr.Get(Tr.Key.FreeLayout), GUILayout.Width(60)))
+                line.InStack = !line.InStack;
+            string ctl = "ctpl_" + i;
+            GUI.SetNextControlName(ctl);
+            line.Template = GUILayout.TextField(line.Template ?? "", GUILayout.ExpandWidth(true));
+            if (GUILayout.Button("X", GUILayout.Width(24))) remove = i;
+            GUILayout.EndHorizontal();
+
+            // 聚焦本行：实时求值预览 + tag 自动补全。
+            if (GUI.GetNameOfFocusedControl() == ctl && !string.IsNullOrEmpty(line.Template))
+            {
+                try
+                {
+                    var pv = Overlayer.Tags.TemplateEngine.Evaluate(line.Template);
+                    if (pv != null)
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Space(44);
+                        var pst = new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = new Color(1f, 1f, 1f, 0.6f) }, wordWrap = true };
+                        GUILayout.Label("→ " + pv, pst, GUILayout.ExpandWidth(true));
+                        GUILayout.EndHorizontal();
+                    }
+                }
+                catch { }
+                DrawTagCompletion(ctl, line.Template, v => { line.Template = v; GUI.changed = true; });
+            }
+
+            // 第二行：字号 / 对齐 / 样式 / 独立特效；自由坐标时再多 X/Y。
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(44);
+            GUILayout.Label("Size", GUILayout.Width(34));
+            int fs = (int)FloatBox("ctsize" + i, line.FontSize, 46f);
+            if (fs < 0) fs = 0;
+            if (fs > 200) fs = 200;
+            line.FontSize = fs;
+            // 模板自带 <size=...> 时整行字号被模板接管（Size 只影响未包裹部分），
+            // 提示用户去改模板里的 size 而不是以为输入框坏了。
+            if (!string.IsNullOrEmpty(line.Template) && line.Template.IndexOf("<size=", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                GUILayout.Label(Tr.Get(Tr.Key.SizeHint), GUILayout.Width(128));
+
+            // 对齐：主(跟随) → TL/T/TR/L/C/R/BL/B/BR 循环。
+            int[] alignSeq = [-1, .. AlignValues];
+            GUILayout.Label(Tr.Get(Tr.Key.PerLineAlign), GUILayout.Width(34));
+            if (GUILayout.Button(line.Align < 0 ? Tr.Get(Tr.Key.FollowMain) : AlignLabel(line.Align), GUILayout.Width(40)))
+            {
+                line.Align = CycleValue(line.Align, alignSeq);
+                lookChanged = true;
+            }
+
+            // 样式：主(跟随) → 常规 / B / I / B+I。
+            int[] styleSeq = [-1, 0, 1, 2, 3];
+            GUILayout.Label(Tr.Get(Tr.Key.PerLineStyle), GUILayout.Width(34));
+            if (GUILayout.Button(line.Style < 0 ? Tr.Get(Tr.Key.FollowMain) : StyleLabel(line.Style), GUILayout.Width(52)))
+            {
+                line.Style = CycleValue(line.Style, styleSeq);
+                lookChanged = true;
+            }
+
+            // 独立阴影/描边：关闭时沿用主槽位特效。
+            bool fx = GUILayout.Toggle(line.EffectOverride, Tr.Get(Tr.Key.TextEffectPerSlot), GUILayout.Width(76));
+            if (fx != line.EffectOverride)
+            {
+                line.EffectOverride = fx;
+                if (fx && line.Effect == null) line.Effect = Main.Settings?.TextEffects?.Clone() ?? new TextEffectConfig();
+                lookChanged = true;
+            }
+
+            // X/Y 对进栈行是「流式位置 + 偏移」、对自由行是「绝对位置」，每行都可单独调整。
+            GUILayout.Label("X", GUILayout.Width(14));
+            line.OffsetX = FloatBox("ctx" + i, line.OffsetX, 52f);
+            GUILayout.Label("Y", GUILayout.Width(14));
+            line.OffsetY = FloatBox("cty" + i, line.OffsetY, 52f);
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            // 每行基础色：模板里未被 <color> 包裹的部分用这个颜色（内置颜色调节工具）。
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(44);
+            bool colorOpen = _jColorFold.TryGetValue("ctc" + i, out var cv) && cv;
+            bool colorNow = GUILayout.Button($"{(colorOpen ? "▼" : "▷")} {Tr.Get(Tr.Key.LineColor)}", GUI.skin.label, GUILayout.Width(130));
+            if (colorNow) _jColorFold["ctc" + i] = !colorOpen;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            bool colorShown = colorNow ? !colorOpen : colorOpen;
+            if (colorShown)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(44);
+                GUILayout.BeginVertical();
+                if (line.TextColor.SettingGUI("", line.TextColor)) lookChanged = true;
+                GUILayout.EndVertical();
+                GUILayout.EndHorizontal();
+            }
+
+            // 效果工具：可视化拼 ColorRange / EasedValue / MovingMan 参数，一键插入模板。
+            bool fxOpen = _jColorFold.TryGetValue("ctfx" + i, out var fxv) && fxv;
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(44);
+            bool nfx = GUILayout.Button($"{(fxOpen ? "▼" : "▷")} {Tr.Get(Tr.Key.EffectTools)}", GUI.skin.label, GUILayout.Width(130));
+            if (nfx) _jColorFold["ctfx" + i] = !fxOpen;
+            GUILayout.EndHorizontal();
+            bool fxShown = nfx ? !fxOpen : fxOpen;
+            if (fxShown)
+            {
+                string k = "ct" + i + "fx.";
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(56);
+                GUILayout.Label("tag", GUILayout.Width(34));
+                string gtag = FxText(k + "gtag", "Progress", 120);
+                GUILayout.Label("min", GUILayout.Width(30));
+                double gmin = FxNum(k + "gmin", 0);
+                GUILayout.Label("max", GUILayout.Width(32));
+                double gmax = FxNum(k + "gmax", 100);
+                GUILayout.EndHorizontal();
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(56);
+                GUILayout.Label("from", GUILayout.Width(34));
+                string gfrom = FxText(k + "gfrom", "FF0000", 70);
+                GUILayout.Label("to", GUILayout.Width(24));
+                string gto = FxText(k + "gto", "00FF00", 70);
+                GUILayout.Label("ease", GUILayout.Width(38));
+                string gease = FxText(k + "gease", "OutExpo", 90);
+                GUILayout.EndHorizontal();
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(56);
+                GUILayout.Label("atMax", GUILayout.Width(40));
+                string gat = FxText(k + "gat", "", 70);
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button(Tr.Get(Tr.Key.Insert) + " {ColorRange}", GUILayout.ExpandWidth(false)))
+                {
+                    line.Template = AppendTag(line.Template, "{" + GradExpr(gtag, gmin, gmax, gfrom, gto, gease, gat) + "}");
+                    GUI.changed = true;
+                }
+                GUILayout.EndHorizontal();
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(56);
+                GUILayout.Label("→", GUILayout.Width(14));
+                string pv = Overlayer.Tags.GameTags.ColorRange(gtag, gmin, gmax, gfrom, gto, gease, -1, gat.Length == 0 ? null : gat);
+                GUILayout.Label(pv.Length == 0 ? "(tag 无效)" : "#" + pv, GUILayout.ExpandWidth(true));
+                GUILayout.EndHorizontal();
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(56);
+                GUILayout.Label("tag", GUILayout.Width(34));
+                string etag = FxText(k + "etag", "Combo", 120);
+                GUILayout.Label("速度ms", GUILayout.Width(52));
+                double espeed = FxNum(k + "espeed", 300);
+                GUILayout.Label("ease", GUILayout.Width(38));
+                string eease = FxText(k + "eease", "OutExpo", 90);
+                if (GUILayout.Button(Tr.Get(Tr.Key.Insert) + " {EasedValue}", GUILayout.ExpandWidth(false)))
+                {
+                    line.Template = AppendTag(line.Template, "{EasedValue(" + etag + ",2," + FxN(espeed) + "," + eease + ")}");
+                    GUI.changed = true;
+                }
+                GUILayout.EndHorizontal();
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(56);
+                GUILayout.Label("tag", GUILayout.Width(34));
+                string mtag = FxText(k + "mtag", "Combo", 120);
+                GUILayout.Label("start", GUILayout.Width(38));
+                double mstart = FxNum(k + "mstart", 140);
+                GUILayout.Label("end", GUILayout.Width(32));
+                double mend = FxNum(k + "mend", 108);
+                GUILayout.Label("ms", GUILayout.Width(28));
+                double mspeed = FxNum(k + "mspeed", 300);
+                GUILayout.EndHorizontal();
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(56);
+                if (GUILayout.Button(Tr.Get(Tr.Key.Insert) + " {MovingMan}", GUILayout.ExpandWidth(false)))
+                {
+                    line.Template = AppendTag(line.Template, "{MovingMan(" + mtag + "," + FxN(mstart) + "," + FxN(mend) + "," + FxN(mend) + "," + FxN(mspeed) + ")}");
+                    GUI.changed = true;
+                }
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
+
+            if (line.EffectOverride)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(44);
+                GUILayout.BeginVertical();
+                DrawEffectControls(line.Effect, 0);
+                GUILayout.EndVertical();
+                GUILayout.EndHorizontal();
+            }
+        }
+        if (remove >= 0)
+        {
+            CustomTexts.RemoveAt(remove);
+            GUI.changed = true;
+        }
+
+        if (GUI.changed)
+        {
+            LabelsDirty = true;
+            var o = Overlay.Instance;
+            if (o != null)
+            {
+                o.MaybeRebuildCustomTexts();
+                if (o.GameObject.activeSelf)
+                {
+                    // 外观字段（对齐/样式/特效/颜色）变化才做材质级重刷；
+                    // 模板文字变化只需重求值——打字路径不重建材质，不卡顿。
+                    if (lookChanged)
+                    {
+                        ShadowManager.ClearCache();
+                        o.ApplyFontToAll();
+                    }
+                    o.RefreshVisibility();
+                    o.RefreshCustomTexts();
+                    LabelsDirty = false;
+                }
+            }
+        }
+    }
+
+    /// <summary>效果工具的文本框（带缓冲，键独立于滑条）。</summary>
+    string FxText(string key, string fallback, float width)
+    {
+        if (!_slideFields.TryGetValue(key, out var text)) _slideFields[key] = text = fallback;
+        string nv = GUILayout.TextField(text, GUILayout.Width(width));
+        if (nv != text) { _slideFields[key] = nv; return nv; }
+        return text;
+    }
+
+    double FxNum(string key, double fallback)
+    {
+        if (!_slideFields.TryGetValue(key, out var text)) _slideFields[key] = text = fallback.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        string nv = GUILayout.TextField(text, GUILayout.Width(52));
+        if (nv != text)
+        {
+            _slideFields[key] = nv;
+            text = nv;
+        }
+        // 稳定帧也返回存储文本的解析值：此前未变帧返回 fallback，输入后预览与插入
+        // 会退回默认数值（如 min 填 50 但表达式仍拼 0）。
+        return double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v) && !float.IsNaN((float)v) && !float.IsInfinity((float)v) ? v : fallback;
+    }
+
+    static string FxN(double v)
+    {
+        return v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    static string AppendTag(string template, string tag)
+    {
+        return string.IsNullOrEmpty(template) ? tag : template + " " + tag;
+    }
+
+    /// <summary>生成 ColorRange 表达式（atMax 留空则不带顶格参数）。</summary>
+    static string GradExpr(string tag, double min, double max, string from, string to, string ease, string atMax)
+    {
+        string s = "ColorRange(" + tag + "," + FxN(min) + "," + FxN(max) + "," + from + "," + to;
+        if (!string.IsNullOrEmpty(ease)) s += "," + ease;
+        if (!string.IsNullOrEmpty(atMax)) s += ",,," + atMax;
+        return s + ")";
+    }
+
+    // ===== 效果工具面板（渐变 / 动画 / 缓动 三个专属分页）=====
+
+    private int _sfxTab;
+
+    // UMM 暗色皮肤的 box/button 背景纹理接近纯黑，GUI.color 是乘法染色——黑底乘任何色仍是黑。
+    // 所有色块一律用纯白纹理打底（染色后即准确颜色）。
+    private static GUIStyle _sfxSwatchStyle;
+
+    private static GUIStyle SfxSwatchStyle => _sfxSwatchStyle ??= new GUIStyle(GUI.skin.button)
+    {
+        normal = { background = Texture2D.whiteTexture },
+        hover = { background = Texture2D.whiteTexture },
+        active = { background = Texture2D.whiteTexture },
+        focused = { background = Texture2D.whiteTexture },
+    };
+
+    /// <summary>画一块实色矩形（白纹理 × GUI.color）。</summary>
+    private static void SfxColorRect(Color c, float w, float h)
+    {
+        var prev = GUI.color;
+        GUI.color = c;
+        GUI.DrawTexture(GUILayoutUtility.GetRect(w, h, GUILayout.Width(w), GUILayout.Height(h)), Texture2D.whiteTexture, ScaleMode.StretchToFill);
+        GUI.color = prev;
+    }
+
+    /// <summary>hex → Color（容错：非法输入显示中灰色，不影响运行）。</summary>
+    private static Color SfxHexColor(string hex)
+    {
+        try { return ColorUtility.TryParseHtmlString("#" + hex.Trim().TrimStart('#'), out var c) ? c : new Color(0.45f, 0.45f, 0.45f); }
+        catch { return new Color(0.45f, 0.45f, 0.45f); }
+    }
+
+    private string SfxVal(string key, string fallback) => _slideFields.TryGetValue(key, out var v) ? v : fallback;
+
+    /// <summary>hex 颜色输入：左色块实时预览 + 右 hex 输入框（键控持久）。</summary>
+    private void SfxColorField(string key, string label, string fallback)
+    {
+        if (!_slideFields.TryGetValue(key, out var hex)) _slideFields[key] = hex = fallback;
+        GUILayout.Label(label, GUILayout.Width(44));
+        SfxColorRect(SfxHexColor(hex), 24, 19);
+        string nv = GUILayout.TextField(hex, GUILayout.Width(86));
+        if (nv != hex) _slideFields[key] = nv;
+    }
+
+    /// <summary>常用色快捷色板，点击即写入该 hex 键。</summary>
+    private void SfxSwatchRow(string key)
+    {
+        string[] presets = { "FF0000", "FF8000", "FFFF00", "00FF00", "00FFCC", "0080FF", "8000FF", "FF00FF", "FFFFFF", "111111" };
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(44);
+        foreach (var p in presets)
+        {
+            var prev = GUI.color;
+            GUI.color = SfxHexColor(p);
+            if (GUILayout.Button(GUIContent.none, SfxSwatchStyle, GUILayout.Width(28), GUILayout.Height(16)))
+            {
+                _slideFields[key] = p;
+                GUI.changed = true;
+            }
+            GUI.color = prev;
+        }
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+    }
+
+    /// <summary>缓动选择器：当前名按钮 + 展开网格（Ease 全部 31 个枚举名，6 列）。返回选中名。</summary>
+    private string SfxEasePicker(string key, string fallback)
+    {
+        if (!_slideFields.TryGetValue(key, out var cur)) _slideFields[key] = cur = fallback;
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        GUILayout.Label("ease", GUILayout.Width(38));
+        bool open = _jColorFold.TryGetValue(key + ".open", out var ov) && ov;
+        if (GUILayout.Button(cur, GUILayout.Width(110)))
+        {
+            _jColorFold[key + ".open"] = !open;
+            GUI.changed = true;
+        }
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+        if (open)
+        {
+            var names = Enum.GetNames(typeof(Overlayer.Tags.GameTags.Ease));
+            int inRow = 0;
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(44);
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (GUILayout.Button(names[i], cur == names[i] ? GUI.skin.box : GUI.skin.button, GUILayout.Width(84), GUILayout.Height(19)))
+                {
+                    _slideFields[key] = names[i];
+                    _jColorFold[key + ".open"] = false;
+                    GUI.changed = true;
+                }
+                if (++inRow >= 6 && i < names.Length - 1)
+                {
+                    inRow = 0;
+                    GUILayout.EndHorizontal();
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Space(44);
+                }
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+        }
+        return _slideFields[key];
+    }
+
+    /// <summary>渐变页：tag + 区间 + 双色/顶格色（色块+hex+色板）+ 缓动 + 渐变条预览 + 插入。</summary>
+    private void DrawSfxGradientTab()
+    {
+        string k = "sfx.g.";
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        GUILayout.Label("tag", GUILayout.Width(38));
+        string tag = FxText(k + "tag", "Progress", 150);
+        GUILayout.Label("min", GUILayout.Width(34));
+        double min = FxNum(k + "min", 0);
+        GUILayout.Label("max", GUILayout.Width(36));
+        double max = FxNum(k + "max", 100);
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        SfxColorField(k + "from", "from", "FF0000");
+        SfxColorField(k + "to", "to", "00FF00");
+        bool useAt = _jColorFold.TryGetValue(k + "at", out var av) && av;
+        bool nAt = GUILayout.Button($"{(useAt ? "▼" : "▷")} atMax", GUI.skin.label, GUILayout.Width(80));
+        if (nAt) _jColorFold[k + "at"] = !useAt;
+        if (nAt ? !useAt : useAt) SfxColorField(k + "atc", "color", "FFD700");
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+        SfxSwatchRow(k + "from");
+        string from = SfxVal(k + "from", "FF0000");
+        string to = SfxVal(k + "to", "00FF00");
+        string ease = SfxEasePicker(k + "ease", "OutExpo");
+        string atHex = useAt ? SfxVal(k + "atc", "FFD700") : "";
+
+        // 渐变条预览：与运行时 ColorRange 用同一缓动库逐段采样。
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        var c0 = SfxHexColor(from);
+        var c1 = SfxHexColor(to);
+        for (int i = 0; i < 20; i++)
+            SfxColorRect(Color.Lerp(c0, c1, Overlayer.Tags.GameTags.SampleEase(ease, i / 19f)), 42, 16);
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+
+        string expr = GradExpr(tag, min, max, from, to, ease, atHex);
+        string pv = Overlayer.Tags.GameTags.ColorRange(tag, min, max, from, to, ease, -1, atHex.Length == 0 ? null : atHex);
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        if (GUILayout.Button(Tr.Get(Tr.Key.Insert) + " {ColorRange}", GUILayout.ExpandWidth(false)))
+        {
+            GUIUtility.systemCopyBuffer = "{" + expr + "}";
+            _lastCopiedTag = tag;
+            _tagsCopiedUntil = Time.realtimeSinceStartup + 1.5f;
+        }
+        GUILayout.Label(pv.Length == 0 ? "-> (tag invalid)" : "-> " + pv + "  (current value)", GUILayout.ExpandWidth(true));
+        GUILayout.EndHorizontal();
+    }
+
+    /// <summary>动画页：MovingMan 参数 + invert/ease + 实时求值预览 + 插入。</summary>
+    private void DrawSfxAnimTab()
+    {
+        string k = "sfx.a.";
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        GUILayout.Label("tag", GUILayout.Width(38));
+        string tag = FxText(k + "tag", "Combo", 140);
+        GUILayout.Label("start", GUILayout.Width(40));
+        double start = FxNum(k + "start", 140);
+        GUILayout.Label("end", GUILayout.Width(34));
+        double end = FxNum(k + "end", 108);
+        GUILayout.Label("hold", GUILayout.Width(38));
+        double hold = FxNum(k + "hold", 108);
+        GUILayout.Label("speed", GUILayout.Width(42));
+        double speed = FxNum(k + "speed", 300);
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        bool invert = _jColorFold.TryGetValue(k + "inv", out var iv) && iv;
+        bool nInv = GUILayout.Toggle(invert, "invert", GUILayout.Width(66));
+        if (nInv != invert) _jColorFold[k + "inv"] = nInv;
+        GUILayout.EndHorizontal();
+        string ease = SfxEasePicker(k + "ease", "Linear");
+
+        string expr = "MovingMan(" + tag + "," + FxN(start) + "," + FxN(end) + "," + FxN(hold) + "," + FxN(speed);
+        if (ease != "Linear" || invert) expr += invert ? ",true" : ",false";
+        if (ease != "Linear") expr += "," + ease;
+        expr += ")";
+        string pv;
+        try { pv = Overlayer.Tags.TemplateEngine.Evaluate("{" + expr + "}") ?? ""; } catch { pv = ""; }
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        if (GUILayout.Button(Tr.Get(Tr.Key.Insert) + " {MovingMan}", GUILayout.ExpandWidth(false)))
+        {
+            GUIUtility.systemCopyBuffer = "{" + expr + "}";
+            _lastCopiedTag = tag;
+            _tagsCopiedUntil = Time.realtimeSinceStartup + 1.5f;
+        }
+        GUILayout.Label(pv.Length == 0 ? "-> (no value)" : "-> " + pv, GUILayout.ExpandWidth(true));
+        GUILayout.EndHorizontal();
+    }
+
+    /// <summary>缓动页：EasedValue 参数 + ease + 实时求值预览 + 插入。</summary>
+    private void DrawSfxEaseTab()
+    {
+        string k = "sfx.e.";
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        GUILayout.Label("tag", GUILayout.Width(38));
+        string tag = FxText(k + "tag", "Progress", 150);
+        GUILayout.Label("digits", GUILayout.Width(44));
+        double digits = FxNum(k + "digits", 2);
+        GUILayout.Label("speed", GUILayout.Width(42));
+        double speed = FxNum(k + "speed", 300);
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+        string ease = SfxEasePicker(k + "ease", "OutExpo");
+
+        string expr = "EasedValue(" + tag + "," + FxN(digits) + "," + FxN(speed);
+        if (ease != "Linear") expr += "," + ease;
+        expr += ")";
+        string pv;
+        try { pv = Overlayer.Tags.TemplateEngine.Evaluate("{" + expr + "}") ?? ""; } catch { pv = ""; }
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        if (GUILayout.Button(Tr.Get(Tr.Key.Insert) + " {EasedValue}", GUILayout.ExpandWidth(false)))
+        {
+            GUIUtility.systemCopyBuffer = "{" + expr + "}";
+            _lastCopiedTag = tag;
+            _tagsCopiedUntil = Time.realtimeSinceStartup + 1.5f;
+        }
+        GUILayout.Label(pv.Length == 0 ? "-> (no value)" : "-> " + pv, GUILayout.ExpandWidth(true));
+        GUILayout.EndHorizontal();
+    }
+
+    private bool _customTagsFold;
+
+    /// <summary>自定义组合 tag：名称 → 模板片段。注册后任何模板都能用 {名称} 引用，
+    /// 这是「不写代码自己造 tag」的入口。名称非法/与内置重名会在日志告警并跳过。</summary>
+    void DrawCustomTagsSection()
+    {
+        if (GUILayout.Button($"{( _customTagsFold ? "▼" : "▷")} {Tr.Get(Tr.Key.CustomTags)}", GUI.skin.label, GUILayout.ExpandWidth(true)))
+            _customTagsFold = !_customTagsFold;
+        if (!_customTagsFold) return;
+        GUI.changed = false;
+
+        HelpLabel(Tr.Get(Tr.Key.CustomTagHint));
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        if (GUILayout.Button(Tr.Get(Tr.Key.AddTag), GUILayout.Width(120)))
+        {
+            CustomTags.Add(new CustomTagDef());
+            GUI.changed = true;
+        }
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+
+        int remove = -1;
+        for (int i = 0; i < CustomTags.Count; i++)
+        {
+            var def = CustomTags[i];
+            if (def == null) { remove = i; continue; }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(20);
+            GUILayout.Label("#" + (i + 1), GUILayout.Width(30));
+            GUILayout.Label("tag", GUILayout.Width(34));
+            def.Name = GUILayout.TextField(def.Name ?? "", GUILayout.Width(120));
+            GUILayout.Label("=", GUILayout.Width(14));
+            def.Template = GUILayout.TextField(def.Template ?? "", GUILayout.ExpandWidth(true));
+            if (GUILayout.Button("X", GUILayout.Width(24))) remove = i;
+            GUILayout.EndHorizontal();
+        }
+        if (remove >= 0)
+        {
+            CustomTags.RemoveAt(remove);
+            GUI.changed = true;
+        }
+
+        if (GUI.changed)
+        {
+            // 名称/模板变更即时注册（非法名与内置重名在日志告警并跳过）。
+            Overlayer.Tags.TagManager.SetCustomTags(CustomTags);
+            GUI.changed = true;
+            var o = Overlay.Instance;
+            if (o != null && o.GameObject.activeSelf)
+            {
+                o.RefreshAllTexts();
+            }
+        }
+    }
+
+    /// <summary>带缓冲的数值输入框：聚焦期间保留中间态（如 "-"、"1."），失焦后才规范化回当前值。
+    /// 之前每帧都按当前值重写缓冲，逐字符输入 "-5" 时 "-" 会在下一帧被 0 覆盖，负数打不进去。</summary>
+    float FloatBox(string key, float value, float width)
+    {
+        if (!_slideFields.TryGetValue(key, out var text))
+            _slideFields[key] = text = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        string ctl = "fb_" + key;
+        GUI.SetNextControlName(ctl);
+        string entered = GUILayout.TextField(text, GUILayout.Width(width));
+        if (entered != text)
+        {
+            _slideFields[key] = entered;
+            return ParseBuffered(entered, value);
+        }
+        // 聚焦中：用户可能正打到一半（"-"、"1." 都还不是最终值），保留缓冲不动。
+        if (GUI.GetNameOfFocusedControl() == ctl) return ParseBuffered(text, value);
+        string formatted = value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        if (formatted != text) _slideFields[key] = formatted;
+        return value;
+    }
+
+    /// <summary>缓冲文本 → 数值；解析失败或非有限值回退当前值（与格式化同为 InvariantCulture）。</summary>
+    static float ParseBuffered(string text, float fallback)
+        => float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float parsed)
+           && !float.IsNaN(parsed) && !float.IsInfinity(parsed)
+            ? parsed
+            : fallback;
+
+    void DrawTemplatesSection()
+    {
+        if (GUILayout.Button($"{( _templateFold ? "▼" : "▷")} {Tr.Get(Tr.Key.Templates)}", GUI.skin.label, GUILayout.ExpandWidth(true)))
+            _templateFold = !_templateFold;
+        if (!_templateFold) return;
+        GUI.changed = false;
+
+        HelpLabel(Tr.Get(Tr.Key.TemplateHint));
+
+        // 示例模板：点击复制整段到剪贴板；悬停 Tooltip 显示完整模板内容。
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        GUILayout.Label(Tr.Get(Tr.Key.TemplateExamples), GUILayout.Width(44));
+        foreach (var ex in Overlayer.Tags.TagHelp.Examples)
+        {
+            if (GUILayout.Button(new GUIContent(ex.Title, ex.Template), GUILayout.ExpandWidth(false)))
+            {
+                GUIUtility.systemCopyBuffer = ex.Template;
+                _lastCopiedTag = ex.Title;
+                _tagsCopiedUntil = Time.realtimeSinceStartup + 1.5f;
+            }
+        }
+        GUILayout.EndHorizontal();
+
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        if (GUILayout.Button(Tr.Get(Tr.Key.CopyTagList), GUILayout.Width(150)))
+        {
+            GUIUtility.systemCopyBuffer = string.Join(" ", Overlayer.Tags.TagManager.GetTagNames());
+            _lastCopiedTag = null;
+            _tagsCopiedUntil = Time.realtimeSinceStartup + 1.5f;
+        }
+        if (GUILayout.Button(Tr.Get(Tr.Key.ResetTemplates), GUILayout.Width(110)))
+        {
+            Labels.ResetTemplates();
+            GUI.changed = true;
+        }
+        // 把内置渲染逐槽位导出为等价模板并填满全部模板字段：
+        // 从「和现在一模一样」的起点开始改，而不是从空白摸索。覆盖现有模板，重置按钮可清空。
+        if (GUILayout.Button(Tr.Get(Tr.Key.ImportBuiltin), GUILayout.Width(130)))
+        {
+            Overlayer.Tags.BuiltinTemplateGenerator.FillAll(this);
+            Labels.Save();
+            GUI.changed = true;
+        }
+        if (GUILayout.Button((_tagHelpOpen ? "▼ " : "▷ ") + Tr.Get(Tr.Key.TagList), GUILayout.ExpandWidth(false)))
+            _tagHelpOpen = !_tagHelpOpen;
+        GUILayout.FlexibleSpace();
+        if (_tagsCopiedUntil > Time.realtimeSinceStartup)
+            GUILayout.Label(string.IsNullOrEmpty(_lastCopiedTag)
+                ? Tr.Get(Tr.Key.TagListCopied)
+                : Tr.Get(Tr.Key.TagCopied) + " {" + _lastCopiedTag + "}");
+        GUILayout.EndHorizontal();
+
+        if (_tagHelpOpen)
+        {
+            HelpLabel(Tr.Get(Tr.Key.TagListHint));
+
+            // 搜索框：按 tag 名或说明过滤（忽略大小写）；117 个 tag 逐个翻太低效。
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(16);
+            GUILayout.Label(Tr.Get(Tr.Key.TagSearch), GUILayout.Width(60));
+            _tagSearch = GUILayout.TextField(_tagSearch ?? "", GUILayout.Width(220));
+            if (GUILayout.Button("✕", GUILayout.Width(24)) && !string.IsNullOrEmpty(_tagSearch)) { _tagSearch = ""; GUI.changed = true; }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            string filter = (_tagSearch ?? "").Trim();
+            bool filtering = filter.Length > 0;
+            int shown = 0, total = 0;
+            _tagHelpScroll = GUILayout.BeginScrollView(_tagHelpScroll, GUILayout.Height(260));
+            foreach (var group in Overlayer.Tags.TagHelp.Groups)
+            {
+                bool headerDrawn = false;
+                foreach (var item in group.Items)
+                {
+                    total++;
+                    if (filtering
+                        && (item.Name == null || item.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0)
+                        && (item.Desc == null || item.Desc.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0))
+                        continue;
+                    if (!headerDrawn)
+                    {
+                        GUILayout.Label("  -- " + group.Title + " --");
+                        headerDrawn = true;
+                    }
+                    shown++;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Space(20);
+                    if (GUILayout.Button("{" + item.Name + "}", GUI.skin.label, GUILayout.Width(170)))
+                    {
+                        GUIUtility.systemCopyBuffer = "{" + item.Name + "}";
+                        _lastCopiedTag = item.Name;
+                        _tagsCopiedUntil = Time.realtimeSinceStartup + 1.5f;
+                    }
+                    GUILayout.Label(item.Desc, GUILayout.ExpandWidth(true));
+                    GUILayout.EndHorizontal();
+                }
+            }
+            GUILayout.EndScrollView();
+            if (filtering)
+                GUILayout.Label("  " + shown + " / " + total);
+        }
+
+        // 共享效果工具：渐变 / 动画 / 缓动三个专属分页（对齐参考工程 ColorRange/MovingMan
+        // 专属设置的思路）——每页可视化控件 + 实时预览，拼好参数一键插入任意模板字段。
+        bool sfxOpen = _jColorFold.TryGetValue("stfx", out var sfxv) && sfxv;
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(16);
+        bool nsfx = GUILayout.Button($"{(sfxOpen ? "▼" : "▷")} {Tr.Get(Tr.Key.EffectTools)}", GUI.skin.label, GUILayout.Width(130));
+        if (nsfx) _jColorFold["stfx"] = !sfxOpen;
+        GUILayout.FlexibleSpace();
+        if (_tagsCopiedUntil > Time.realtimeSinceStartup)
+            GUILayout.Label(string.IsNullOrEmpty(_lastCopiedTag)
+                ? Tr.Get(Tr.Key.TagListCopied)
+                : Tr.Get(Tr.Key.TagCopied) + " {" + _lastCopiedTag + "}");
+        GUILayout.EndHorizontal();
+        // 按钮返回值只代表「点击帧」；展开态以翻转后的状态为准。
+        bool sfxShown = nsfx ? !sfxOpen : sfxOpen;
+        if (sfxShown)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(16);
+            int ntab = GUILayout.Toolbar(_sfxTab, new[]
+            {
+                Tr.Get(Tr.Key.SfxGradient), Tr.Get(Tr.Key.SfxAnim), Tr.Get(Tr.Key.SfxEase)
+            }, GUILayout.Height(22));
+            if (ntab != _sfxTab) { _sfxTab = ntab; GUI.changed = true; }
+            GUILayout.EndHorizontal();
+            GUILayout.Space(2);
+
+            if (_sfxTab == 0) DrawSfxGradientTab();
+            else if (_sfxTab == 1) DrawSfxAnimTab();
+            else DrawSfxEaseTab();
+        }
+
+        GUILayout.Space(4);
+        GUILayout.Label("  -- Standard --");
+            DrawTemplateField("Progress", ref Labels.ProgressTemplate);
+            DrawTemplateField("Accuracy", ref Labels.AccuracyTemplate);
+            DrawTemplateField("XAccuracy", ref Labels.XAccuracyTemplate);
+            DrawTemplateField("XScore", ref Labels.XScoreTemplate);
+            DrawTemplateField("P.Accuracy", ref Labels.PotAccuracyTemplate);
+            DrawTemplateField("P.XAccuracy", ref Labels.PotXAccuracyTemplate);
+            DrawTemplateField("P.XScore", ref Labels.PotXScoreTemplate);
+            DrawTemplateField("Music Time", ref Labels.MusicTimeTemplate);
+            DrawTemplateField("Map Time", ref Labels.MapTimeTemplate);
+            DrawTemplateField("CheckPoint", ref Labels.CheckpointTemplate);
+            DrawTemplateField("Best", ref Labels.BestTemplate);
+            DrawTemplateField("TBPM", ref Labels.TbpmTemplate);
+            DrawTemplateField("CBPM", ref Labels.CbpmTemplate);
+            DrawTemplateField("KPS", ref Labels.KpsTemplate);
+            DrawTemplateField("Attempt", ref Labels.AttemptTemplate);
+            DrawTemplateField("Full Attempt", ref Labels.FullAttemptTemplate);
+            DrawTemplateField("Timing Scale", ref Labels.TimingScaleTemplate);
+            DrawTemplateField("Judgement", ref Labels.JudgementTemplate);
+            DrawTemplateField("Combo Value", ref Labels.ComboTemplate);
+            DrawTemplateField("Timing Window", ref Labels.TimingWindowTemplate);
+
+            GUILayout.Label("  -- ExtendedOverlay --");
+            DrawTemplateField("FPS", ref Labels.FpsTemplate);
+            DrawTemplateField("Author", ref Labels.AuthorTemplate);
+            DrawTemplateField("State", ref Labels.StateTemplate);
+            DrawTemplateField("Death", ref Labels.DeathTemplate);
+            DrawTemplateField("Start", ref Labels.StartTemplate);
+            DrawTemplateField("Timing", ref Labels.TimingTemplate);
+            DrawTemplateField("Avg Timing", ref Labels.AvgTimingTemplate);
+            DrawTemplateField("Hit Offset", ref Labels.HitOffsetTemplate);
+
+        if (GUI.changed)
+        {
+            LabelsDirty = true;
+            var o = Overlay.Instance;
+            if (o != null && o.GameObject.activeSelf)
+            {
+                o.RefreshAllTexts();
+                LabelsDirty = false;
+            }
+        }
+    }
+
     void DrawLabelsSection()
     {
         if (GUILayout.Button($"{( _labelsFold ? "▼" : "▷")} {Tr.Get(Tr.Key.CustomLabels)}", GUI.skin.label, GUILayout.ExpandWidth(true)))
@@ -1533,6 +2392,73 @@ public class Settings
     }
 
     /// <summary>没有可编辑标签行的项（XScore/判定时间窗）只显示分隔符输入框。</summary>
+    /// <summary>模板输入行（空 = 内置渲染）。聚焦时在下方实时显示求值预览。</summary>
+    static void DrawTemplateField(string label, ref string template)
+    {
+        string ctl = "tpl_" + label;
+        string current = template;
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(20);
+        GUILayout.Label(label, GUILayout.Width(110));
+        GUI.SetNextControlName(ctl);
+        current = GUILayout.TextField(current ?? "", GUILayout.ExpandWidth(true));
+        GUILayout.EndHorizontal();
+        DrawTemplatePreview(ctl, current);
+        DrawTagCompletion(ctl, current, v => current = v);
+        template = current;
+    }
+
+    /// <summary>聚焦中的模板字段下方显示实时求值预览（每帧只求值聚焦的那一个，开销可控）。</summary>
+    static void DrawTemplatePreview(string ctl, string template)
+    {
+        if (GUI.GetNameOfFocusedControl() != ctl) return;
+        if (string.IsNullOrEmpty(template)) return;
+        try
+        {
+            var v = Overlayer.Tags.TemplateEngine.Evaluate(template);
+            if (v == null) return;
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(44);
+            var st = new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = new Color(1f, 1f, 1f, 0.6f) }, wordWrap = true };
+            GUILayout.Label("→ " + v, st, GUILayout.ExpandWidth(true));
+            GUILayout.EndHorizontal();
+        }
+        catch { }
+    }
+
+    /// <summary>tag 自动补全：光标尾部有未闭合的 {片段 时，显示匹配的 tag 按钮，
+    /// 点击替换片段并恢复输入焦点（参考引擎 TagCompletionPopup 的轻量 IMGUI 版）。</summary>
+    static void DrawTagCompletion(string ctl, string template, Action<string> setValue)
+    {
+        if (GUI.GetNameOfFocusedControl() != ctl) return;
+        int lastOpen = template != null ? template.LastIndexOf('{') : -1;
+        if (lastOpen < 0) return;
+        if (template.IndexOf('}', lastOpen) >= 0) return; // 已闭合 → 不补全
+        string frag = template.Substring(lastOpen + 1);
+        if (frag.Length == 0 || frag.IndexOf('(') >= 0) return; // 已进入参数区 → 不补全
+        var names = Overlayer.Tags.TagManager.GetTagNames();
+        var matches = new List<string>();
+        foreach (var n in names)
+        {
+            if (n.StartsWith(frag, StringComparison.OrdinalIgnoreCase) && n != frag) matches.Add(n);
+            if (matches.Count >= 6) break;
+        }
+        if (matches.Count == 0) return;
+        GUILayout.BeginHorizontal();
+        GUILayout.Space(44);
+        for (int i = 0; i < matches.Count; i++)
+        {
+            if (GUILayout.Button("{" + matches[i] + "}", GUI.skin.label, GUILayout.Width(36f + matches[i].Length * 6.5f)))
+            {
+                setValue(template.Substring(0, lastOpen + 1) + matches[i] + "}");
+                GUI.changed = true;
+            }
+            if (i < matches.Count - 1) GUILayout.Space(6);
+        }
+        GUILayout.FlexibleSpace();
+        GUILayout.EndHorizontal();
+    }
+
     static void DrawSeparatorField(string label, ref string separator)
     {
         GUILayout.BeginHorizontal();
@@ -1567,12 +2493,25 @@ public class Settings
     }
 
     static readonly int[] AlignValues = [257, 258, 260, 513, 514, 516, 1025, 1026, 1028];
-    static readonly string[] AlignLabels = ["TL", "T", "TR", "L", "C", "R", "BL", "B", "BR"];
+    /// <summary>对齐方式的三语短标签；顺序与 AlignValues 一一对应。</summary>
+    static readonly Tr.Key[] AlignKeys =
+    [
+        Tr.Key.AlignTL, Tr.Key.AlignT, Tr.Key.AlignTR,
+        Tr.Key.AlignL, Tr.Key.AlignC, Tr.Key.AlignR,
+        Tr.Key.AlignBL, Tr.Key.AlignB, Tr.Key.AlignBR,
+    ];
+
+    static string[] AlignLabels()
+    {
+        var labels = new string[AlignKeys.Length];
+        for (int i = 0; i < labels.Length; i++) labels[i] = Tr.Get(AlignKeys[i]);
+        return labels;
+    }
 
     static string AlignLabel(int v)
     {
         int idx = Array.IndexOf(AlignValues, v);
-        return idx >= 0 ? AlignLabels[idx] : "C";
+        return idx >= 0 ? Tr.Get(AlignKeys[idx]) : Tr.Get(Tr.Key.AlignC);
     }
 
     static void DrawAlignment(string label, ref int align, ref int style)
@@ -1598,7 +2537,7 @@ public class Settings
         if (idx < 0) idx = 4;
         GUILayout.BeginHorizontal();
         GUILayout.Space(24);
-        int newIdx = GUILayout.SelectionGrid(idx, AlignLabels, 3, GUILayout.Height(60));
+        int newIdx = GUILayout.SelectionGrid(idx, AlignLabels(), 3, GUILayout.Height(60));
         GUILayout.EndHorizontal();
         if (newIdx != idx) { align = AlignValues[newIdx]; Overlayer.Overlay.Instance?.ApplyAlignment(); }
     }
@@ -1787,6 +2726,8 @@ public class Settings
         var s = JsonConvert.DeserializeObject<Settings>(json);
         ApplyLegacyExtendedOverlayMigration(s, json);
         MigrateLegacyDisplayOrder(s, json);
+        // 手改 JSON 可能留下 null 元素/负字号，统一回填后再交给渲染层。
+        if (s != null) CustomTextLine.NormalizeAll(s.CustomTexts);
         return s;
     }
 

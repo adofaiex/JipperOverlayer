@@ -61,6 +61,38 @@ public class LabelConfig
     /// <summary>判定时间窗 4 行（XPerfect/Perfect/Great/Good）共用的分隔符。</summary>
     public string TimingWindowSeparator = " | ";
 
+    // ==== 模板（空 = 沿用内置渲染；非空 = 整行交给模板引擎，可自由拼装 tag）====
+    // 语法：{Tag}、{Tag:0.00}、{Tag(1)}（玩家序号，coop 用）、{{ }} 表示字面花括号。
+    // 模板非空时该行的底色统一为白，颜色请在模板里用 <color=#RRGGBB> 自行控制。
+    public string ProgressTemplate = "";
+    public string AccuracyTemplate = "";
+    public string XAccuracyTemplate = "";
+    public string XScoreTemplate = "";
+    public string PotAccuracyTemplate = "";
+    public string PotXAccuracyTemplate = "";
+    public string PotXScoreTemplate = "";
+    public string MusicTimeTemplate = "";
+    public string MapTimeTemplate = "";
+    public string CheckpointTemplate = "";
+    public string BestTemplate = "";
+    public string TbpmTemplate = "";
+    public string CbpmTemplate = "";
+    public string KpsTemplate = "";
+    public string AttemptTemplate = "";
+    public string FullAttemptTemplate = "";
+    public string TimingScaleTemplate = "";
+    public string JudgementTemplate = "";
+    public string ComboTemplate = "";
+    public string TimingWindowTemplate = "";
+    public string FpsTemplate = "";
+    public string AuthorTemplate = "";
+    public string StateTemplate = "";
+    public string DeathTemplate = "";
+    public string StartTemplate = "";
+    public string TimingTemplate = "";
+    public string AvgTimingTemplate = "";
+    public string HitOffsetTemplate = "";
+
     // State text (ExtendedOverlay)
     public string StateWaiting = "Waiting";
     public string StateAutoTile = "Auto Tile";
@@ -126,6 +158,48 @@ public class LabelConfig
         TimingSeparator ??= " | ";
         HitOffsetSeparator ??= " - ";
         TimingWindowSeparator ??= " | ";
+
+        ProgressTemplate ??= "";
+        AccuracyTemplate ??= "";
+        XAccuracyTemplate ??= "";
+        XScoreTemplate ??= "";
+        PotAccuracyTemplate ??= "";
+        PotXAccuracyTemplate ??= "";
+        PotXScoreTemplate ??= "";
+        MusicTimeTemplate ??= "";
+        MapTimeTemplate ??= "";
+        CheckpointTemplate ??= "";
+        BestTemplate ??= "";
+        TbpmTemplate ??= "";
+        CbpmTemplate ??= "";
+        KpsTemplate ??= "";
+        AttemptTemplate ??= "";
+        FullAttemptTemplate ??= "";
+        TimingScaleTemplate ??= "";
+        JudgementTemplate ??= "";
+        ComboTemplate ??= "";
+        TimingWindowTemplate ??= "";
+        FpsTemplate ??= "";
+        AuthorTemplate ??= "";
+        StateTemplate ??= "";
+        DeathTemplate ??= "";
+        StartTemplate ??= "";
+        TimingTemplate ??= "";
+        AvgTimingTemplate ??= "";
+        HitOffsetTemplate ??= "";
+    }
+
+    /// <summary>清空全部模板（回到内置渲染）。设置面板「重置模板」用。</summary>
+    public void ResetTemplates()
+    {
+        ProgressTemplate = AccuracyTemplate = XAccuracyTemplate = XScoreTemplate = "";
+        PotAccuracyTemplate = PotXAccuracyTemplate = PotXScoreTemplate = "";
+        MusicTimeTemplate = MapTimeTemplate = CheckpointTemplate = BestTemplate = "";
+        TbpmTemplate = CbpmTemplate = KpsTemplate = "";
+        AttemptTemplate = FullAttemptTemplate = TimingScaleTemplate = "";
+        JudgementTemplate = ComboTemplate = TimingWindowTemplate = "";
+        FpsTemplate = AuthorTemplate = StateTemplate = DeathTemplate = StartTemplate = "";
+        TimingTemplate = AvgTimingTemplate = HitOffsetTemplate = "";
     }
 
     public static LabelConfig GetPreset(Language language) => language switch

@@ -9,18 +9,38 @@ public class OverlayMono : MonoBehaviour
     private Coroutine _comboAnim;
     private bool _canvasEnabledState;
     private bool _canvasStateInitialized;
+    /// <summary>自定义行求值计时器（~10Hz：模板里可能有 {{Fps}}/{{MusicTime}} 这类持续刷新的 tag，</summary>
+    private float _customTextTimer;
 
     private void Update()
     {
         if (Overlay == null || !Overlay.GameObject.activeSelf) return;
         // 没有音乐/地图时间文本时无需每帧进入时间计算与格式化路径。
         if (Overlay.TimeDisplayNeeded) Overlay.UpdateTime();
+        // 含动画 tag（EasedValue/MovingMan）的模板需要逐帧求值才有连续动画；
+        // 其余自定义行维持 10Hz 节流（足够跟上 FPS/时间这类标签，又不会每帧跑反射）。
+        if (Overlay.HasAnimatedCustomTexts() || Overlay.ComboTemplateAnimated)
+        {
+            Overlay.RefreshCustomTexts();
+            if (Overlay.ComboTemplateAnimated) Overlay.RefreshComboTemplate();
+        }
+        else
+        {
+            _customTextTimer -= Time.deltaTime;
+            if (_customTextTimer <= 0f)
+            {
+                _customTextTimer = 0.1f;
+                Overlay.RefreshCustomTexts();
+            }
+        }
         if (Overlay.Canvas)
         {
             // 布局编辑器开着时需要看见并拖拽元素，暂停也不能关 Canvas。
             // 这里是 Canvas 可见性的唯一裁决点：编辑器只声明意图，不直接改
             // Canvas.enabled，否则两边各写一次会来回打架（暂停下拖拽黑屏）。
-            bool desired = !GameRefs.IsPaused || OverlayDragEditor.IsEditing;
+            // 非游玩显示模式同理豁免：编辑器编辑界面 controller.paused=true，
+            // 不豁免的话画布会被这里每帧关掉，勾了「非游玩时显示」的行根本看不见。
+            bool desired = !GameRefs.IsPaused || OverlayDragEditor.IsEditing || (Overlay != null && Overlay.OutsidePlayActive);
             if (!_canvasStateInitialized || desired != _canvasEnabledState)
             {
                 Overlay.Canvas.enabled = desired;

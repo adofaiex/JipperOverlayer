@@ -19,6 +19,8 @@ An in-game overlay mod for **A Dance of Fire and Ice (ADOFAI)** that displays pr
 - **Progress Bar** — Visual progress indicator
 - **Extended Overlay** — Extended overlay with FPS, State, Death count, Start position, Timing analysis, Debug text hiding
 - **Co-op Support** — Per-player display for multiplayer
+- **Tag Templates** — Rewrite every readout as a free-form template over 117 tags (`{Progress:0.00}`, `{MarginCombo(XP)}`, gradient colour via `{ColorRange(...)}`, smoothed values via `{EasedValue(...)}`); game values freeze outside a level instead of flashing 0; searchable in-panel tag reference with one-click copy and ready-made examples
+- **Custom Text Lines** — Add as many extra overlay lines as you want: flow with the main column or free-position anywhere, per-line font size, alignment, style, and independent shadow/outline
 - **Text Effects** — Global shadow (TMP Underlay) and outline with toggles, RGBA color pickers, Width/Softness sliders
 - **Per-Section Fonts** — Independent font and font-size per overlay slot (Main, BPM, Judgement, Combo, Timing, Attempt)
 - **UI Patch Toggles** — Independent switches for Beta watermark, level name position, auto text reposition
@@ -27,6 +29,22 @@ An in-game overlay mod for **A Dance of Fire and Ice (ADOFAI)** that displays pr
 - **Diagnostics & Font Rescan** — Inspect the detected game API, loader, XPerfect, fonts, and overlay state; copy the report to the clipboard, and rescan `CustomFonts` without restarting
 
 > Install **one** loader variant per game folder (UMM or MelonLoader), not both. They use the same Harmony id and separate mod folders, so installing both can cause duplicate patches and split settings/statistics.
+
+## Tag Templates & Custom Text
+
+Every readout (progress, accuracy, judgement, ...) accepts a **template** that replaces its whole line, and any number of extra lines can be added under **Custom Text Lines** (stacked after the main column, or free-positioned anywhere on screen).
+
+Syntax: `{Tag}` - `{Tag:0.00}` for decimal places - `{Tag(1)}` for the co-op player index - `{{` / `}}` for literal braces. The settings panel (`Text Templates`) lists all 117 tags grouped by category with localized (English / 한국어 / 中文) descriptions, a search box, and click-to-copy names, plus ready-made example templates.
+
+Example - a progress line that fades from red to green and glides between updates:
+
+```
+<color=#{ColorRange(Progress,0,100,FF0000,00FF00,OutExpo)}>{EasedValue(Progress,2):0.0}%</color>
+```
+
+Game-value tags are gated by playback state: while a level is not loaded (menu/results/transition) or the game is paused they keep their last good value instead of flashing `0`; `{Fps}`, `{Title}`, `{Artist}` and the `{Is*}` booleans keep updating everywhere.
+
+## Settings UI Languages
 
 ## Settings UI Languages
 

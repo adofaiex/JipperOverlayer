@@ -5,10 +5,23 @@ ADOFAI 游戏内 overlay 模组（C#，双加载器：Unity Mod Manager + MelonL
 显示进度/准度/BPM/连击/判定等。仓库 2228293026/JipperOverlayer，分支 master。
 
 ## 当前任务（2026-11-13 会话确认，完成后更新此行）
-- 为 overlay 文本与数值之间的分隔符新增逐项自定义（20 个文本项独立配置）；
-- 修复多人模式下 XScore 的 `MAX-n` 与潜力值比原生结算差 2 分的问题
-  （改用「已判定计分格数 × 2」作分母，参照 JipperResourcePack 的 JRP 口径）。
-- 已完成：commit `374d30b` 已推送到 origin/master（11 个文件，中文 commit message）。
+- 把 overlay 数值彻底拆成 tag 模板系统（可自由拼装）：
+  `Overlayer/Tags/` 新增引擎（TagAttribute / TagManager / TemplateEngine）与 3 个 GameTags 分片，
+  共 119 个内置 tag（特效：ColorRange atMax 顶格金/EasedValue/MovingMan/MarginCombo/XScoreRatio/判定聚合/时间分量/峰值 BPM；导入内置渲染一键生成等价模板；含动画 tag 的模板逐帧求值）
+  + 用户自定义组合 tag（CustomTagDef：设置面板可视化编辑「名称 → 模板片段」，即时注册，防环/防重名）；每个文本项一个独立模板字段（LabelConfig），空模板保持原有渲染；
+  设置面板新增独立「文本模板」分区（可用 tag 一览，可点击复制）+ 「自定义文本行」分区
+  （可增删的任意行，进栈 / 自由坐标两选一，~10Hz 求值）+ tag 游玩状态门控
+  （BlockOnNotPlaying/Paused，非游玩/暂停时冻结上一次好值，参照 Overlayer 的 TagType）。Tr 三语已补文案。
+- 状态：代码与 CHANGELOG 已写完；主工程 + UMM/Melon 双加载器 Release 零警告编译通过。
+  状态（2026-11-14 晚）：效果工具面板已部署（FF2AAD24，bin/deploy-output/游戏目录三点一致）。
+  修复「设置窗整块灰板」根因：DrawTemplatesSection 里孤儿 GUILayout.EndHorizontal()（一展开就抛 NRE，UMM 记一次后 ShowModSettings=-1 + ExitGUI 踢出标签页）——已删除并全文件配对审计；Main.OnGUI 加 try/catch 兜底（限频记全堆栈，不再外抛给 UMM）；MovingMan speed 改可选（默认 250）。
+  修复「从菜单进关整关没进度条」：ExitOutsidePlayMode（OnUpdate 先于 Show 翻标志）不恢复 Enter 隐藏的进度条 → Show 恢复块被跳过——Exit 现按 ShowProgressBar 点回（16BC56D8）。
+  修复「非游玩文本转场后永久消失」：Hide()（场景卸载/擦黑/编辑器 ResetScene）压灭画布但 _outsidePlayActive 标志不复位 → 永不重走 Enter——UpdateOutsidePlayMode 加自愈（检测被外部熄灭即补恢复）（3F7848EF）。
+  修复「编辑器里非游玩行从不显示」：门控 !IsGameReady 在编辑器恒为 true（controller/conductor 齐 + isGameWorld=true）→ 改为 IsScnGame || EditorPlayMode（scnEditor.playMode，口径参照 Overlayer.Module.ADOFAI 的 IsPlaying）（BE70DC7C）。OverlayMono 画布裁决（!IsPaused）加 OutsidePlayActive 豁免（编辑器编辑界面 controller.paused=true 会每帧关画布）。
+  修复「打开设置文本位置偏移」：SetupLocation 流式高度依赖游戏态条件（检查点/无失败/StartTile）+ Enter 不重排 → 非游玩模式下固定栈顶起排只排勾选行、Enter 主动 SetupLocation、Settings.OnGUI 入口清 GUI.changed 防 UMM 控件污染（CC4461A3）。deploy-to-game.ps1 已升级为改名式部署（游戏运行中可用）。效果工具面板已升级为三分页专属 UI（渐变/动画/缓动：色块+hex+色板、31 缓动选择器、渐变条预览、实时求值、一键插入；FxNum 稳定帧返回 bug 已修）（331DE2A0）。
+  游戏运行中留用户实测；未 commit（等用户指示）。注意：本机安全策略开始拦截内联命令直写 Program Files，游戏目录部署一律走 deploy-to-game.ps1。脚本受版本控制的副本在 tools/deploy-to-game.ps1（deploy-output/ 里那份是运行时副本，已被 gitignore）。
+  部署技巧（已验证）：游戏运行中 DLL 被锁——把旧 DLL 改名为 .prev 再放入新 DLL，不用关游戏，下次启动生效。
+- 上一任务（分隔符逐项自定义 + coop XScore 差 2 分）已完成并推送：commit `374d30b`。
 
 ## 事实锚点（2026-09-18 核实）
 - `CHANGELOG.md` 共 324 行，顶部为 `## Unreleased`。以实际 read 结果为准。
@@ -23,3 +36,4 @@ ADOFAI 游戏内 overlay 模组（C#，双加载器：Unity Mod Manager + MelonL
 2. **修复必须先验证再宣布成功**：先完整追踪调用链（谁调用、条件、默认值、配置读写），说得出"为什么这次会生效"才动手；无法运行游戏验证时，明确说"静态分析结论，需要用户实测"，不许说"已修复"。
 3. **同一问题第二次失败必须换方法**：重新通读完整代码路径，禁止在同一个函数里再猜一个条件继续试。
 4. 构建（Build）通过 ≠ 修复完成。
+5. **为验证启动游戏后必须保持游戏运行**（2026-11-14 用户明确指出）：读日志确认加载成功后禁止 Stop-Process，游戏留给用户实测；只有用户要求关闭时才关。

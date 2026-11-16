@@ -17,6 +17,7 @@ public static class Main
     private static GameObject _overlayGo;
     private static bool _enabled;
     private static DateTime _enableRetryAfter = DateTime.MinValue;
+    private static float _lastOnGuiErrAt = -999f;
 
     public static void Init(IModLoader loader)
     {
@@ -26,7 +27,17 @@ public static class Main
         loader.OnToggle += OnToggle;
         loader.OnGUI += () =>
         {
-            if (Settings != null) Settings.OnGUI();
+            if (Settings == null) return;
+            try { Settings.OnGUI(); }
+            catch (Exception e)
+            {
+                // UMM 捕获到 mod OnGUI 的异常后可能不再调用本回调（表现为设置窗整块灰板）。
+                // 自己兜住：带完整堆栈限频记录，便于定位；后续帧照常继续绘制。
+                float now = Time.realtimeSinceStartup;
+                if (now - _lastOnGuiErrAt < 30f) return;
+                _lastOnGuiErrAt = now;
+                Error("[Exception] OnGUI: " + e);
+            }
         };
         loader.OnSaveGUI += OnSaveGUI;
         loader.OnUpdate += OnUpdate;
@@ -65,6 +76,13 @@ public static class Main
             AssetLoader.Load();
             FontManager.ScanFonts();
             PlayCount.Load();
+
+            // 启动即跑一次 tag 注册扫描：不装模板也能在日志里确认 tag 引擎可用（数量 / 反射失败）。
+            try { Overlayer.Tags.TagManager.GetTagNames(); }
+            catch (Exception e) { Loader.Warning("TagManager: 预注册失败 " + e.Message); }
+            // 注册用户自定义组合 tag（必须在内置 tag 就绪之后——重名检测依赖内置表）。
+            try { Overlayer.Tags.TagManager.SetCustomTags(Settings.CustomTags); }
+            catch (Exception e) { Loader.Warning("TagManager: 自定义 tag 注册失败 " + e.Message); }
 
             if (_overlayGo == null)
             {
@@ -194,6 +212,8 @@ public static class Main
     private static void OnUpdate(float deltaTime)
     {
         XPerfectIntegration.EnsureInitialized();
+        // 非游玩显示模式驱动：菜单/结算里点亮画布只渲染自定义行（不依赖 _mono 的 Update）。
+        try { _overlay?.UpdateOutsidePlayMode(); } catch { }
         if (Settings.ShowFPS)
             try { _overlay?.ExtendedOverlay?.UpdateFPS(deltaTime); }
             catch { }
