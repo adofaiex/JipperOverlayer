@@ -256,10 +256,12 @@ internal static partial class GameTags
 
     // ===== 低成本数值 tag =====
 
-    /// <summary>平均帧耗时（毫秒）。</summary>
+    /// <summary>平均帧耗时（毫秒）。可选窗口参数（毫秒）：{FrameTime(500)} 返回最近 500ms
+    /// 的平均帧耗时，且每 500ms 才重算一次；窗口钳制 1~10000ms。移植自参考工程 FpsTracker。</summary>
     [Tag("FrameTime", TagState.None)]
-    internal static double FrameTime()
+    internal static double FrameTime(double windowMs = 0)
     {
+        if (windowMs > 0) return R(FpsTracker.FrameTime(windowMs));
         float dt = Time.unscaledDeltaTime;
         return dt > 0f ? R(dt * 1000f) : 0;
     }

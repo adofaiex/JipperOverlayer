@@ -166,7 +166,7 @@ internal static class TagHelp
             E("AvgTiming", "全部打击平均偏移（ms）", "Average hit offset (ms)", "전체 타격 평균 오프셋 (ms)"),
             E("HitOffset", "最近一次打击误差（ms）", "Latest hit offset (ms)", "최근 타격 오차 (ms)"),
             E("TimingScale", "判定区间倍率百分比（100 = 原速）", "Timing window scale percent (100 = normal)", "판정 배율 백분율 (100 = 기본)"),
-            E("Fps", "帧率", "Frames per second", "프레임율")),
+            E("Fps", "帧率；可带窗口参数：Fps(500) 为最近 500ms 平均值且每 500ms 更新一次", "Frames per second; optional window: Fps(500) averages the last 500ms and refreshes every 500ms", "프레임율; 창 인수 지원: Fps(500)은 최근 500ms 평균이며 500ms마다 갱신")),
 
         new("判定时间窗", "Judgement windows", "판정 창",
             E("XPerfectMs", "X 完美窗口（±ms，仅 r149+）", "XPerfect window (±ms, r149+ only)", "X완벽 판정창 (±ms, r149+)"),
@@ -190,7 +190,7 @@ internal static class TagHelp
             E("ColorRange", "按数值在两色间渐变，输出 hex；第 8 参数 atMax 为顶格色：ColorRange(XAccuracy,0,100,FF00FF,FFFFFF,,,FFD700)", "Interpolate between two colours by a tag value, returns hex; 8th arg atMax = colour at value >= max", "태그 값에 따라 두 색 사이를 보간해 hex 반환; 8번째 인수 atMax는 최대값 도달 시 색"),
             E("EasedValue", "数值缓动跟随：EasedValue(Progress,2,500,OutExpo)", "Eased follow of a tag value: EasedValue(Progress,2,500,OutExpo)", "태그 값을 부드럽게 따라감: EasedValue(Progress,2,500,OutExpo)"),
             E("MovingMan", "数值变化瞬间的脉冲缓动：MovingMan(Combo,30,60,30,300)；speed 可省略（默认 250）", "Pulse between two sizes when a tag changes: MovingMan(Combo,30,60,30,300); speed optional (default 250)", "값이 변하는 순간 두 크기 사이를 이동: MovingMan(Combo,30,60,30,300); speed 생략 가능(기본 250)"),
-            E("FrameTime", "平均帧耗时（毫秒）", "Average frame time (ms)", "평균 프레임 시간 (ms)"),
+            E("FrameTime", "平均帧耗时（毫秒）；可带窗口参数：FrameTime(500) 每 500ms 更新一次", "Average frame time (ms); optional window: FrameTime(500) refreshes every 500ms", "평균 프레임 시간 (ms); 창 인수 지원: FrameTime(500)은 500ms마다 갱신"),
             E("SessionAttempts", "本次游戏会话的尝试次数", "Attempts started this game session", "이 게임 세션의 시도 횟수"),
             E("Difficulty", "难度（本地化名）", "Difficulty (localized)", "난이도 (현지화)"),
             E("DifficultyRaw", "难度（英文枚举名）", "Difficulty (raw enum name)", "난이도 (영문)"),

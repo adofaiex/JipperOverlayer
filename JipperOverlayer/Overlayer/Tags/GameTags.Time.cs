@@ -180,10 +180,14 @@ internal static partial class GameTags
         => Math.Round(Ext?.LastTiming ?? 0f, Main.Settings?.HitOffsetDecimal ?? 5);
 
     /// <summary>FPS。内置 FPS 文本关闭时 UpdateFPS 不会被调用（Main.OnUpdate 有 ShowFPS 门控），
-    /// 此时按本次渲染的帧时长现算，保证模板里的 {Fps} 不会恒为 0。</summary>
+    /// 此时按本次渲染的帧时长现算，保证模板里的 {Fps} 不会恒为 0。
+    /// 可选窗口参数（毫秒）：{Fps(500)} 返回最近 500ms 的平均帧率，且每 500ms 才重算一次
+    /// （窗口期内的重复求值返回同一个值），即「数值按刷新间隔跳变」。窗口钳制 1~10000ms。
+    /// 移植自参考工程 Overlayer 的 FpsTracker。</summary>
     [Tag("Fps", TagState.None)]
-    internal static double Fps()
+    internal static double Fps(double windowMs = 0)
     {
+        if (windowMs > 0) return R(FpsTracker.Fps(windowMs));
         float cached = Ext?.LastFps ?? 0f;
         if (cached > 0f) return R(cached);
         float dt = UnityEngine.Time.deltaTime;

@@ -212,6 +212,8 @@ public static class Main
     private static void OnUpdate(float deltaTime)
     {
         XPerfectIntegration.EnsureInitialized();
+        // 帧时间戳环形缓冲：{Fps(窗口)}/{FrameTime(窗口)} 的窗口平均与节流数据源。
+        try { Overlayer.Tags.FpsTracker.Tick(); } catch { }
         // 非游玩显示模式驱动：菜单/结算里点亮画布只渲染自定义行（不依赖 _mono 的 Update）。
         try { _overlay?.UpdateOutsidePlayMode(); } catch { }
         if (Settings.ShowFPS)

@@ -1113,11 +1113,13 @@ public class Overlay
         // 模组被禁用时不得点亮画布（Main.Disable 会 Hide，这里若再激活就成了「禁用后仍在菜单显示」）。
         // 不能用 !GameObject.activeSelf 做「非游玩」判定——进入本模式的第一件事就是点亮画布，
         // 下一帧条件反转 → 熄灭 → 再点亮，画布每帧振荡（用户看到的「一直闪」）。
-        // 游玩会话 = scnGame 场景，或编辑器 play 模式（含 play 内暂停）；编辑器「编辑界面」
-        // 属于非游玩。此前用 !IsGameReady 判定，但编辑器里 controller/conductor 齐全且
-        // isGameWorld=true，IsGameReady 恒为 true，勾了「非游玩时显示」的行在编辑器里从不出现
-        // （口径参照 Overlayer.Module.ADOFAI 的 IsPlaying：编辑器只在 play 模式算游玩）。
-        bool inLevel = GameRefs.IsScnGame || (GameRefs.EditorInstance != null && GameRefs.EditorPlayMode);
+        // 游玩会话判定不能基于场景名：新版官方关卡（如 2-X）不走 scnGame/scnEditor 场景，
+        // IsScnGame 在关卡内为 false（日志实证 inLevel=False → 非游玩模式在关卡内激活，
+        // 隐藏全部内置文本与进度条）。回到「关卡已加载」口径（IsGameReady），
+        // 但编辑器例外：编辑器里 controller/conductor 齐全且 isGameWorld=true，IsGameReady
+        // 恒为 true，故编辑器场景改用 playMode 区分（编辑界面=非游玩，play 模式=游玩，
+        // 口径参照 Overlayer.Module.ADOFAI 的 IsPlaying）。
+        bool inLevel = GameRefs.EditorInstance != null ? GameRefs.EditorPlayMode : GameRefs.IsGameReady;
         bool want = Main.IsEnabled && HasOutsidePlayLines() && GameObject != null && !inLevel;
         if (want && !_outsidePlayActive)
         {
