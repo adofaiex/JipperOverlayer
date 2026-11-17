@@ -77,6 +77,10 @@ public class Settings
     public float FPSRefreshRate = 0.2f;
     public int ExtendedDecimalPrecision = 2;
     public bool HideDebugText = true, ShowDeath = true, ShowStart = true, ShowTiming = true;
+    /// <summary>隐藏关卡标题（曲名）。直接写游戏闲置静态字段 GCS.d_dontShowTitles——
+    /// scrHUDText.Update 每帧读它禁用 isTitle 的标题 Graphic，零补丁原生隐藏
+    /// （实现口径参照 Overlayer.Module.ADOFAI 的 HideTitle）。</summary>
+    public bool HideTitle;
     /// <summary>在判定条旁显示本次敲击的毫秒误差（issue #6）。独立于 ShowTiming：
     /// 主栈的 Timing 文本在左上角，这个专门贴着判定条，方便打击瞬间余光读取。</summary>
     public bool ShowHitOffset;
@@ -637,6 +641,7 @@ public class Settings
             bool prevHide = HideDebugText;
             HideDebugText = Tog(Tr.Get(Tr.Key.HideDebugText), HideDebugText);
             if (prevHide != HideDebugText) PatchManager.RefreshPatches();
+            HideTitle = Tog(Tr.Get(Tr.Key.HideTitle), HideTitle); // 每帧由 Main.OnUpdate 写入 GCS
             RemoveNotRequireInAuto = Tog(Tr.Get(Tr.Key.RemoveAutoReq), RemoveNotRequireInAuto);
             bool prevPseudo = CheckPseudo;
             CheckPseudo = Tog(Tr.Get(Tr.Key.CheckPseudo), CheckPseudo);
@@ -1551,6 +1556,14 @@ public class Settings
             // 第二行：字号 / 对齐 / 样式 / 独立特效；自由坐标时再多 X/Y。
             GUILayout.BeginHorizontal();
             GUILayout.Space(44);
+            // 字体：折叠展开后逐项点选（跟随主 / 字体表）；切换后需要材质级重刷。
+            bool fontOpen = _jColorFold.TryGetValue("ctfont" + i, out var fov) && fov;
+            string curFont = line.FontIndex < 0 ? Tr.Get(Tr.Key.FollowMain)
+                : FontManager.FontNames != null && line.FontIndex < FontManager.FontNames.Length
+                    ? FontManager.FontNames[line.FontIndex] : "?";
+            if (GUILayout.Button($"{(fontOpen ? "▼" : "▷")} {Tr.Get(Tr.Key.PerLineFont)}: {curFont}", GUILayout.Width(150)))
+                _jColorFold["ctfont" + i] = !fontOpen;
+
             GUILayout.Label("Size", GUILayout.Width(34));
             int fs = (int)FloatBox("ctsize" + i, line.FontSize, 46f);
             if (fs < 0) fs = 0;
@@ -1595,6 +1608,32 @@ public class Settings
             line.OffsetY = FloatBox("cty" + i, line.OffsetY, 52f);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+
+            // 字体展开列表：跟随主 + 字体表逐行点选（展开头在本行第二行控件里）。
+            if (_jColorFold.TryGetValue("ctfont" + i, out var fOpen2) && fOpen2)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(44);
+                GUILayout.BeginVertical();
+                if (GUILayout.Button(line.FontIndex < 0 ? "● " + Tr.Get(Tr.Key.FollowMain) : Tr.Get(Tr.Key.FollowMain), GUILayout.Width(220)))
+                {
+                    if (line.FontIndex != -1) { line.FontIndex = -1; lookChanged = true; }
+                }
+                if (FontManager.FontNames != null)
+                {
+                    for (int fi = 0; fi < FontManager.FontNames.Length; fi++)
+                    {
+                        bool sel = line.FontIndex == fi;
+                        if (GUILayout.Button(sel ? "● " + FontManager.FontNames[fi] : FontManager.FontNames[fi], GUILayout.Width(220)))
+                        {
+                            if (line.FontIndex != fi) { line.FontIndex = fi; lookChanged = true; }
+                        }
+                    }
+                }
+                GUILayout.EndVertical();
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
 
             // 每行基础色：模板里未被 <color> 包裹的部分用这个颜色（内置颜色调节工具）。
             GUILayout.BeginHorizontal();

@@ -96,6 +96,32 @@ internal static partial class GameTags
 
     private static double Pitch => GameRefs.SongPitch > 0f ? GameRefs.SongPitch : 1f;
 
+    // ===== 音高（pitch）=====
+
+    /// <summary>地图自身的 pitch 设置（1 = 100%）；菜单/无关卡时按 1 处理。
+    /// 与参考 Overlayer.Module.ADOFAI 的 EditorPitch 同口径（LevelData.pitch / 100）。</summary>
+    [Tag("EditorPitch", TagState.None)]
+    internal static double EditorPitch()
+    {
+        try
+        {
+            var ld = scnGame.instance?.levelData ?? scnEditor.instance?.levelData;
+            return ld == null ? 1.0 : ld.pitch / 100.0;
+        }
+        catch { return 1.0; }
+    }
+
+    /// <summary>速度试炼倍率（1 = 原速），与参考模块的 SpeedPitch 同口径。</summary>
+    [Tag("SpeedPitch", TagState.None)]
+    internal static double SpeedPitch()
+    {
+        try { return GCS.currentSpeedTrial; } catch { return 1.0; }
+    }
+
+    /// <summary>当前实际播放 pitch：地图 pitch × 速度倍率（编辑器里还乘回放速度）。</summary>
+    [Tag("Pitch", TagState.None)]
+    internal static double CurrentPitch() => Pitch;
+
     [Tag("TileBpmWithoutPitch")]
     internal static double TileBpmWithoutPitch() => R(TileBpm() / Pitch);
 

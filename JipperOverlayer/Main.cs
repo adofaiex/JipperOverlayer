@@ -80,6 +80,8 @@ public static class Main
             // 启动即跑一次 tag 注册扫描：不装模板也能在日志里确认 tag 引擎可用（数量 / 反射失败）。
             try { Overlayer.Tags.TagManager.GetTagNames(); }
             catch (Exception e) { Loader.Warning("TagManager: 预注册失败 " + e.Message); }
+            // 三语文案对齐自检（长度 + 哨兵键），错位只会在日志留 Warning。
+            Overlayer.Localization.Tr.SelfAudit();
             // 注册用户自定义组合 tag（必须在内置 tag 就绪之后——重名检测依赖内置表）。
             try { Overlayer.Tags.TagManager.SetCustomTags(Settings.CustomTags); }
             catch (Exception e) { Loader.Warning("TagManager: 自定义 tag 注册失败 " + e.Message); }
@@ -132,6 +134,8 @@ public static class Main
 
         Log("JipperOverlayer disabled.");
         SceneManager.sceneUnloaded -= OnSceneUnloaded;
+        // 隐藏标题开关随模组禁用复位，避免残留 GCS.d_dontShowTitles=true。
+        try { GCS.d_dontShowTitles = false; } catch { }
 
         // 禁用发生在场景回调/资源异常时也要尽力完成所有清理；某一步失败不能
         // 阻止后续 unpatch，否则 Harmony 补丁会残留在游戏进程中。
@@ -214,6 +218,9 @@ public static class Main
         XPerfectIntegration.EnsureInitialized();
         // 帧时间戳环形缓冲：{Fps(窗口)}/{FrameTime(窗口)} 的窗口平均与节流数据源。
         try { Overlayer.Tags.FpsTracker.Tick(); } catch { }
+        // 隐藏关卡标题开关 → 游戏闲置字段 GCS.d_dontShowTitles（scrHUDText 每帧读，
+        // 见 scrHUDText.Update）。每帧直写保证开关/启停状态无漂移；禁用时在 Disable 复位。
+        try { GCS.d_dontShowTitles = Settings != null && Settings.HideTitle; } catch { }
         // 非游玩显示模式驱动：菜单/结算里点亮画布只渲染自定义行（不依赖 _mono 的 Update）。
         try { _overlay?.UpdateOutsidePlayMode(); } catch { }
         if (Settings.ShowFPS)

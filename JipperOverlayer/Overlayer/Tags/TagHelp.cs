@@ -159,6 +159,11 @@ internal static class TagHelp
             E("MaxKps", "全图最高 KPS", "Highest KPS on the map", "맵 최고 KPS"),
             E("MaxBpmWithoutPitch", "全图最高 BPM（不含音高）", "Highest BPM (pitch excluded)", "맵 최고 BPM (피치 제외)")),
 
+        new("音高", "Pitch", "피치",
+            E("Pitch", "当前实际播放音高（地图 pitch × 速度倍率）", "Current playback pitch (map pitch × speed)", "현재 재생 피치 (맵 피치 × 속도)"),
+            E("EditorPitch", "地图 pitch 设置（1 = 100%）", "Map pitch setting (1 = 100%)", "맵 피치 설정 (1 = 100%)"),
+            E("SpeedPitch", "速度试炼倍率（1 = 原速）", "Speed trial multiplier (1 = normal)", "속도 시련 배율 (1 = 기본)")),
+
         new("尝试与时机", "Attempts & Timing", "시도와 타이밍",
             E("Attempt", "本起点尝试次数", "Attempts from this start point", "이 시작점의 시도 횟수"),
             E("FullAttempt", "总尝试次数", "Total attempts", "전체 시도 횟수"),

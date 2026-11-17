@@ -37,6 +37,7 @@ tools/TemplateEngineTest/obj/
 
 # ===== Local agent scratch / session logs =====
 .dsh-meow/
+.minimax/
 session.jsonl
 .tmp-*/
 .tmp-shot.png

@@ -65,7 +65,7 @@ public static class Tr
         Templates, TemplateHint, CopyTagList, TagListCopied, ResetTemplates,
         TagList, TagListHint, TagCopied,
         CustomText, CustomTextHint, AddLine, StackLayout, FreeLayout,
-        PerLineAlign, PerLineStyle, FollowMain, TagSearch, TemplateExamples, ImportBuiltin, LineColor, ShowOutsidePlay, EffectTools, Insert, CustomTags, CustomTagHint, AddTag,
+        PerLineAlign, PerLineStyle, PerLineFont, FollowMain, TagSearch, HideTitle, TemplateExamples, ImportBuiltin, LineColor, ShowOutsidePlay, EffectTools, Insert, CustomTags, CustomTagHint, AddTag,
         SfxGradient, SfxAnim, SfxEase, SizeHint,
         AlignTL, AlignT, AlignTR, AlignL, AlignC, AlignR, AlignBL, AlignB, AlignBR,
         StyleCompactRegular, StyleCompactBold, StyleCompactItalic, StyleCompactBoldItalic,
@@ -137,7 +137,7 @@ public static class Tr
              "Copy Tag List", "Tag list copied", "Reset Templates",
              "Available Tags", "Every tag below works in any template. Click a tag name to copy it.", "Copied",
              "Custom Text Lines", "Extra lines you define yourself. Each line is a template; choose Stack to flow with the main column, or Free to place it with its own X/Y offset.",
-             "Add Line", "Stack", "Free", "Align", "Style", "Main", "Search", "Examples", "Import Built-in", "Text colour", "Show outside play", "Effect tools", "Insert", "Custom tags", "Name = letters/digits/underscore. Template may reference any tag (incl. other custom tags; avoid cycles). Changes apply instantly.", "Add tag", "Gradient", "Animation", "Easing", "Template <size> tag wins",
+             "Add Line", "Stack", "Free", "Align", "Style", "Font", "Main", "Search", "Hide Title", "Examples", "Import Built-in", "Text colour", "Show outside play", "Effect tools", "Insert", "Custom tags", "Name = letters/digits/underscore. Template may reference any tag (incl. other custom tags; avoid cycles). Changes apply instantly.", "Add tag", "Gradient", "Animation", "Easing", "Template <size> tag wins",
              "TL", "T", "TR", "L", "C", "R", "BL", "B", "BR",
              "Regular", "B", "I", "B+I" ],
 
@@ -204,7 +204,7 @@ public static class Tr
              "태그 목록 복사", "태그 목록을 복사했습니다", "템플릿 초기화",
              "사용 가능한 태그", "아래 태그는 모든 템플릿에서 사용할 수 있습니다. 태그 이름을 클릭하면 복사됩니다.", "복사됨",
              "사용자 정의 텍스트", "직접 추가하는 줄입니다. 각 줄은 템플릿이며, Stack 은 메인 열에 이어서, Free 는 자체 X/Y 위치로 배치합니다.",
-             "줄 추가", "스택", "자유", "정렬", "스타일", "메인", "검색", "예시", "내장 렌더링 가져오기", "텍스트 색상", "플레이 외 표시", "이펙트 도구", "삽입", "커스텀 태그", "이름 = 영문/숫자/밑줄. 템플릿은 모든 태그를 참조할 수 있습니다(다른 커스텀 태그 포함, 순환 금지). 변경 즉시 적용.", "태그 추가", "그라데이션", "애니메이션", "이징", "템플릿 <size> 태그가 우선",
+             "줄 추가", "스택", "자유", "정렬", "스타일", "글꼴", "메인", "검색", "제목 숨기기", "예시", "내장 렌더링 가져오기", "텍스트 색상", "플레이 외 표시", "이펙트 도구", "삽입", "커스텀 태그", "이름 = 영문/숫자/밑줄. 템플릿은 모든 태그를 참조할 수 있습니다(다른 커스텀 태그 포함, 순환 금지). 변경 즉시 적용.", "태그 추가", "그라데이션", "애니메이션", "이징", "템플릿 <size> 태그가 우선",
              "좌상", "상", "우상", "좌", "중", "우", "좌하", "하", "우하",
              "보통", "B", "I", "B+I" ],
 
@@ -271,7 +271,7 @@ public static class Tr
              "复制 tag 列表", "tag 列表已复制", "重置模板",
              "可用 Tag 列表", "下列 tag 都能写进任意模板；点击 tag 名即可复制 {Tag}。", "已复制",
              "自定义文本行", "自己新增的文本行。每行是一个模板：选「进栈」会接在主列后面自动往下排，选「自由」则用自己的 X/Y 定位。",
-             "添加一行", "进栈", "自由", "对齐", "样式", "主", "搜索", "示例", "导入内置渲染", "文本颜色", "非游玩时显示", "效果工具", "插入", "自定义 tag", "名称 = 字母/数字/下划线。模板可引用任意 tag（含其他自定义 tag，注意别成环）。改完立即生效。", "添加 tag", "渐变", "动画", "缓动", "模板 <size> 优先",
+             "添加一行", "进栈", "自由", "对齐", "样式", "字体", "主", "搜索", "隐藏标题", "示例", "导入内置渲染", "文本颜色", "非游玩时显示", "效果工具", "插入", "自定义 tag", "名称 = 字母/数字/下划线。模板可引用任意 tag（含其他自定义 tag，注意别成环）。改完立即生效。", "添加 tag", "渐变", "动画", "缓动", "模板 <size> 优先",
              "左上", "上", "右上", "左", "中", "右", "左下", "下", "右下",
              "常", "B", "I", "B+I" ],
     ];
@@ -284,6 +284,36 @@ public static class Tr
         int lang = (int)Main.Settings.CurrentLanguage;
         if (lang < 0 || lang >= Data.Length || k >= Data[lang].Length) return Data[0][k];
         return Data[lang][k];
+    }
+
+    /// <summary>启动自检：Data 长度必须等于枚举数（Tr.Get 按下标取值，数组错位只会
+    /// 静默显示别的文案），再抽查几个插入位附近的哨兵键（英文），把「往中间插了枚举
+    /// 却把文案追加到末尾」这类错位暴露到日志。新增 Key 时三语数组要同步插到同位。</summary>
+    public static void SelfAudit()
+    {
+        try
+        {
+            int count = System.Enum.GetValues(typeof(Key)).Length;
+            for (int lang = 0; lang < Data.Length; lang++)
+            {
+                if (Data[lang].Length == count) continue;
+                Loader.Warning($"Tr: 语言 {lang} 文案数 {Data[lang].Length} != 枚举数 {count}，越界键将回退英文");
+            }
+            (Key, string)[] canaries =
+            {
+                (Key.HideTitle, "Hide Title"),
+                (Key.FollowMain, "Main"),
+                (Key.SizeHint, "Template <size> tag wins"),
+                (Key.TemplateExamples, "Examples"),
+                (Key.AlignTL, "TL"),
+            };
+            foreach (var (key, want) in canaries)
+            {
+                string got = Data[0][(int)key];
+                if (got != want) Loader.Warning($"Tr: 键 {key} 英文文案错位（期望 '{want}'，实际 '{got}'）");
+            }
+        }
+        catch (System.Exception e) { Loader.Warning("Tr: 自检失败 " + e.Message); }
     }
 
     /// <summary>Union of every character used by any language's UI strings (for glyph pre-baking).</summary>

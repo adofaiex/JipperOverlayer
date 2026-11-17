@@ -21,6 +21,16 @@ ADOFAI 游戏内 overlay 模组（C#，双加载器：Unity Mod Manager + MelonL
   修复「打开设置文本位置偏移」：SetupLocation 流式高度依赖游戏态条件（检查点/无失败/StartTile）+ Enter 不重排 → 非游玩模式下固定栈顶起排只排勾选行、Enter 主动 SetupLocation、Settings.OnGUI 入口清 GUI.changed 防 UMM 控件污染（CC4461A3）。deploy-to-game.ps1 已升级为改名式部署（游戏运行中可用）。效果工具面板已升级为三分页专属 UI（渐变/动画/缓动：色块+hex+色板、31 缓动选择器、渐变条预览、实时求值、一键插入；FxNum 稳定帧返回 bug 已修）（331DE2A0）。
   游戏运行中留用户实测；未 commit（等用户指示）。注意：本机安全策略开始拦截内联命令直写 Program Files，游戏目录部署一律走 deploy-to-game.ps1。脚本受版本控制的副本在 tools/deploy-to-game.ps1（deploy-output/ 里那份是运行时副本，已被 gitignore）。
   部署技巧（已验证）：游戏运行中 DLL 被锁——把旧 DLL 改名为 .prev 再放入新 DLL，不用关游戏，下次启动生效。
+  状态（2026-11-18）：`dcc210b` 已推送（FpsTracker 窗口采样批次 + 2-X 门控修复），本地与 origin 齐平。
+  修复「官方关卡（2-X 等）内 overlay 文本全部消失」：官方关卡不走 scnGame/scnEditor 场景（日志实证 inLevel=False IsScnGame=False editorInst=False），
+  BE70DC7C 的场景名门控在关卡内误判非游玩 → 回到 IsGameReady 口径，编辑器例外保留：
+  `inLevel = EditorInstance != null ? EditorPlayMode : IsGameReady`。
+  新增：自定义行每行独立字体（FontIndex，-1 跟随主区域，设置面板折叠列表点选，切换走材质级重刷）；
+  「隐藏标题」开关（显示→行为选项，每帧写 GCS.d_dontShowTitles，scrHUDText 原生隐藏标题，Disable 复位，参照 Overlayer.Module.ADOFAI）。
+  修复「Tr 三语 HideTitle 错位」：曾把三语文案追加到数组末尾而枚举插在中间 → TemplateExamples~SizeHint 串位（Tr.Get 按下标取值）——文案已移回同位；
+  加 Tr.SelfAudit()（Main.Enable 调用：三语长度 = 枚举数 + 哨兵键英文抽查）防再犯。
+  注意：deploy-to-game.ps1 的拷贝源是 deploy-output\（旧产物缓存）不是 bin——部署前必须先把 bin 新 DLL 拷进 deploy-output（2026-11-18 差点部署旧 DLL，三点哈希校验拦下）。
+  当前未 commit（等实测 + 用户指示）；游戏目录已部署最新 DLL（哈希三点一致）。
 - 上一任务（分隔符逐项自定义 + coop XScore 差 2 分）已完成并推送：commit `374d30b`。
 
 ## 事实锚点（2026-09-18 核实）

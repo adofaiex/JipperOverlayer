@@ -479,8 +479,15 @@ public class Overlay
 
         foreach (var t in ExtraTexts)
             if (t) t.font = mainFont;
+        var fxLinesForFont = s.CustomTexts;
         for (int i = 0; i < CustomTexts.Count; i++)
-            if (CustomTexts[i]) CustomTexts[i].font = mainFont;
+        {
+            if (!CustomTexts[i]) continue;
+            // 有独立字体设置的行用行字体，否则跟主区域（与 Align/Style 的每行覆盖口径一致）。
+            var lf = fxLinesForFont != null && i < fxLinesForFont.Count && fxLinesForFont[i] != null && fxLinesForFont[i].FontIndex >= 0
+                ? fxLinesForFont[i].FontIndex : s.GetFontIndexForSlot(Settings.FontSlot.Main);
+            CustomTexts[i].font = FontManager.GetFont(lf);
+        }
 
         // 文本特效按槽位分别应用：各槽位可开启独立特效（阴影/描边），
         // 未开启的沿用全局设置。同字体的不同槽位会拿到不同材质
@@ -979,7 +986,7 @@ public class Overlay
                 ? new Vector2(228, -15f - 35f * i)
                 : new Vector2(16f + (line?.OffsetX ?? 0f), -16f + (line?.OffsetY ?? 0f));
             var text = go.AddComponent<TextMeshProUGUI>();
-            text.font = FontManager.GetFont(s.GetFontIndexForSlot(Settings.FontSlot.Main));
+            text.font = FontManager.GetFont(line != null && line.FontIndex >= 0 ? line.FontIndex : s.GetFontIndexForSlot(Settings.FontSlot.Main));
             text.fontSize = line != null && line.FontSize > 0 ? line.FontSize : mainSize;
             text.alignment = line != null && line.Align >= 0 ? (TextAlignmentOptions)line.Align : (TextAlignmentOptions)s.MainAlign;
             text.fontStyle = line != null && line.Style >= 0 ? (FontStyles)line.Style : (FontStyles)s.MainStyle;

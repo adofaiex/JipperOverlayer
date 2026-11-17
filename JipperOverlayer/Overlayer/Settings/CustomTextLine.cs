@@ -34,6 +34,9 @@ public class CustomTextLine
 
     // ==== 每行独立的文本外观；-1 / false = 跟随主区域 ====
 
+    /// <summary>字体索引（FontManager.FontNames 的下标）；-1 = 跟随主区域。</summary>
+    public int FontIndex = -1;
+
     /// <summary>对齐方式（TextAlignmentOptions 的 int 值）；-1 = 跟随主区域。</summary>
     public int Align = -1;
 
@@ -48,6 +51,9 @@ public class CustomTextLine
     public void Normalize()
     {
         Template ??= "";
+        // 手改 JSON 可能填了越界下标：渲染层按当前字体表取值时再做边界保护，
+        // 这里只把明显非法的负值（-1 以外）拉回跟随主区域。
+        if (FontIndex < -1) FontIndex = -1;
         if (FontSize < 0) FontSize = 0;
         Effect ??= new TextEffectConfig();
         TextColor ??= new ColorCache(Color.white);
