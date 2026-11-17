@@ -27,10 +27,11 @@ ADOFAI 游戏内 overlay 模组（C#，双加载器：Unity Mod Manager + MelonL
   `inLevel = EditorInstance != null ? EditorPlayMode : IsGameReady`。
   新增：自定义行每行独立字体（FontIndex，-1 跟随主区域，设置面板折叠列表点选，切换走材质级重刷）；
   「隐藏标题」开关（显示→行为选项，每帧写 GCS.d_dontShowTitles，scrHUDText 原生隐藏标题，Disable 复位，参照 Overlayer.Module.ADOFAI）。
+  新增：Pitch / EditorPitch / SpeedPitch 音高 tag（实际播放 pitch / 地图 pitch 设置 / 速度试炼倍率，TagHelp 三语说明）。
   修复「Tr 三语 HideTitle 错位」：曾把三语文案追加到数组末尾而枚举插在中间 → TemplateExamples~SizeHint 串位（Tr.Get 按下标取值）——文案已移回同位；
   加 Tr.SelfAudit()（Main.Enable 调用：三语长度 = 枚举数 + 哨兵键英文抽查）防再犯。
   注意：deploy-to-game.ps1 的拷贝源是 deploy-output\（旧产物缓存）不是 bin——部署前必须先把 bin 新 DLL 拷进 deploy-output（2026-11-18 差点部署旧 DLL，三点哈希校验拦下）。
-  当前未 commit（等实测 + 用户指示）；游戏目录已部署最新 DLL（哈希三点一致）。
+  状态（2026-11-18）：`c54437c` 已推送；游戏目录已部署最新 DLL（三点哈希一致），等游戏内实测音高 tag / 字体 / 隐藏标题。
 - 上一任务（分隔符逐项自定义 + coop XScore 差 2 分）已完成并推送：commit `374d30b`。
 
 ## 事实锚点（2026-09-18 核实）
