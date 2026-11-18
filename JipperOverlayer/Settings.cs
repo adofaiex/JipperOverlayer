@@ -1526,13 +1526,35 @@ public class Settings
             line.Enabled = GUILayout.Toggle(line.Enabled, "", GUILayout.Width(18));
             line.ShowOutsidePlay = GUILayout.Toggle(line.ShowOutsidePlay, Tr.Get(Tr.Key.ShowOutsidePlay), GUILayout.Width(96));
             GUILayout.Label("#" + (i + 1), GUILayout.Width(30));
-            if (GUILayout.Button(line.InStack ? Tr.Get(Tr.Key.StackLayout) : Tr.Get(Tr.Key.FreeLayout), GUILayout.Width(60)))
-                line.InStack = !line.InStack;
+            // 栈位：折叠展开后点选（自由 / 主栈 / BPM / 判定 / 连击），当前项带 ●。
+            string stackKey = "ctstack" + i;
+            bool stackOpen = _jColorFold.TryGetValue(stackKey, out var sov) && sov;
+            if (GUILayout.Button($"{(stackOpen ? "▼" : "▷")} {StackTargetLabel(line)}", GUILayout.Width(76)))
+                _jColorFold[stackKey] = !stackOpen;
             string ctl = "ctpl_" + i;
             GUI.SetNextControlName(ctl);
             line.Template = GUILayout.TextField(line.Template ?? "", GUILayout.ExpandWidth(true));
             if (GUILayout.Button("X", GUILayout.Width(24))) remove = i;
             GUILayout.EndHorizontal();
+
+            if (stackOpen)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(44);
+                for (int t = -1; t <= 3; t++)
+                {
+                    bool cur = t < 0 ? !line.InStack : line.InStack && line.StackTarget == t;
+                    if (GUILayout.Button((cur ? "● " : "") + StackTargetLabel(t), GUILayout.Width(72)))
+                    {
+                        if (t < 0) line.InStack = false;
+                        else { line.InStack = true; line.StackTarget = t; }
+                        _jColorFold[stackKey] = false;
+                        // GUILayout.Button 不置位 GUI.changed：不手动置位，栈位改动不会落盘。
+                        GUI.changed = true;
+                    }
+                }
+                GUILayout.EndHorizontal();
+            }
 
             // 聚焦本行：实时求值预览 + tag 自动补全。
             if (GUI.GetNameOfFocusedControl() == ctl && !string.IsNullOrEmpty(line.Template))
@@ -1608,6 +1630,51 @@ public class Settings
             line.OffsetY = FloatBox("cty" + i, line.OffsetY, 52f);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
+
+            // 换行：宽度 0 = 不换行（长关卡名保持单行），> 0 = 按该宽度自动换行；行距可为负。
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(44);
+            GUILayout.Label("宽", GUILayout.Width(20));
+            float nw = Mathf.Clamp(FloatBox("ctw" + i, line.WrapWidth, 56f), 0f, 4000f);
+            if (!Mathf.Approximately(nw, line.WrapWidth)) { line.WrapWidth = nw; GUI.changed = true; }
+            GUILayout.Label("行距", GUILayout.Width(34));
+            float nls = Mathf.Clamp(FloatBox("ctls" + i, line.LineSpacing, 50f), -100f, 200f);
+            if (!Mathf.Approximately(nls, line.LineSpacing)) { line.LineSpacing = nls; GUI.changed = true; }
+            GUILayout.Label("宽 0 = 不换行", GUILayout.ExpandWidth(false));
+            bool advOpen = _jColorFold.TryGetValue("ctadv" + i, out var aov) && aov;
+            if (GUILayout.Button($"{(advOpen ? "▼" : "▷")} 高级", GUILayout.Width(68)))
+                _jColorFold["ctadv" + i] = !advOpen;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            // 高级：高度基准 / 字距 / 段距 / 旋转。
+            if (advOpen)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(44);
+                bool ah = GUILayout.Toggle(line.AutoHeight, "自动高", GUILayout.Width(76));
+                if (ah != line.AutoHeight) { line.AutoHeight = ah; GUI.changed = true; }
+                GUILayout.Label("高", GUILayout.Width(20));
+                float nh = Mathf.Clamp(FloatBox("cth" + i, line.Height, 50f), 1f, 2000f);
+                if (!Mathf.Approximately(nh, line.Height)) { line.Height = nh; GUI.changed = true; }
+                GUILayout.Label("字距", GUILayout.Width(34));
+                float ncs = Mathf.Clamp(FloatBox("ctcs" + i, line.CharSpacing, 44f), -100f, 200f);
+                if (!Mathf.Approximately(ncs, line.CharSpacing)) { line.CharSpacing = ncs; GUI.changed = true; }
+                GUILayout.Label("段距", GUILayout.Width(34));
+                float nps = Mathf.Clamp(FloatBox("ctps" + i, line.ParagraphSpacing, 44f), -100f, 200f);
+                if (!Mathf.Approximately(nps, line.ParagraphSpacing)) { line.ParagraphSpacing = nps; GUI.changed = true; }
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(44);
+                GUILayout.Label("旋转", GUILayout.Width(34));
+                float nrot = Mathf.Clamp(FloatBox("ctrot" + i, line.RotZ, 50f), -180f, 180f);
+                if (!Mathf.Approximately(nrot, line.RotZ)) { line.RotZ = nrot; GUI.changed = true; }
+                GUILayout.Label("度（自动高关闭时用「高」做对齐基准）", GUILayout.ExpandWidth(false));
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
 
             // 字体展开列表：跟随主 + 字体表逐行点选（展开头在本行第二行控件里）。
             if (_jColorFold.TryGetValue("ctfont" + i, out var fOpen2) && fOpen2)
@@ -1743,7 +1810,10 @@ public class Settings
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(44);
                 GUILayout.BeginVertical();
-                DrawEffectControls(line.Effect, 0);
+                // 描边/阴影是材质级效果，必须把 changed 接到 lookChanged 才能触发
+                // ShadowManager.ClearCache() + ApplyFontToAll() 重刷材质；丢掉返回值
+                // 就只重求值文本、不刷材质，表现为「开关亮着但描边不出现」。
+                if (DrawEffectControls(line.Effect, 0)) lookChanged = true;
                 GUILayout.EndVertical();
                 GUILayout.EndHorizontal();
             }
@@ -2546,6 +2616,19 @@ public class Settings
         for (int i = 0; i < labels.Length; i++) labels[i] = Tr.Get(AlignKeys[i]);
         return labels;
     }
+
+    /// <summary>栈位名：-1 = 自由，0 = 主栈，1 = BPM，2 = 判定，3 = 连击。</summary>
+    static string StackTargetLabel(int t) => t switch
+    {
+        0 => Tr.Get(Tr.Key.StackMain),
+        1 => Tr.Get(Tr.Key.StackBpm),
+        2 => Tr.Get(Tr.Key.StackJudge),
+        3 => Tr.Get(Tr.Key.StackCombo),
+        _ => Tr.Get(Tr.Key.FreeLayout),
+    };
+
+    static string StackTargetLabel(CustomTextLine line)
+        => line == null || !line.InStack ? Tr.Get(Tr.Key.FreeLayout) : StackTargetLabel(line.StackTarget);
 
     static string AlignLabel(int v)
     {

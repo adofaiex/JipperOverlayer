@@ -93,12 +93,18 @@ public class ExtendedOverlayModule
                 var text = opTexts[i];
                 if (text == null) continue;
                 var line = opLines != null && i < opLines.Count ? opLines[i] : null;
-                bool on = line != null && line.Enabled && line.InStack && line.ShowOutsidePlay
-                    && !string.IsNullOrEmpty(line.Template);
+                // 自由行不属于主列：开关和位置都归 RefreshCustomTexts 管。这里用含 InStack
+                // 的条件去写 enabled，会在两次 10Hz 求值之间把自由行关掉（自由已是默认，看得见）。
+                if (line == null || !line.InStack) continue;
+                bool on = line.Enabled && line.ShowOutsidePlay && !string.IsNullOrEmpty(line.Template);
                 text.enabled = on;
                 if (!on) continue;
+                // 挂在 BPM / 判定 / 连击三组下的行由 LayoutGroupedCustomRows 排，
+                // 这里不能把它们拉到主列，也不占用主列的栈位。
+                if (line.StackTarget != 0) continue;
                 text.rectTransform.anchoredPosition = new Vector2(228 + line.OffsetX, oy + line.OffsetY);
-                oy -= 35;
+                // 按实际行高递推（单行仍是 35），多行/大字号行才不会压住下一行。
+                oy -= (int)Mathf.Max(35f, text.preferredHeight + 4f);
             }
             return;
         }
@@ -125,13 +131,18 @@ public class ExtendedOverlayModule
             var text = customs[i];
             if (text == null) continue;
             var line = customLines != null && i < customLines.Count ? customLines[i] : null;
-            bool on = line != null && line.Enabled && line.InStack && !string.IsNullOrEmpty(line.Template);
+            // 同非游玩分支：自由行的 enabled 交给 RefreshCustomTexts，这里别关它。
+            if (line == null || !line.InStack) continue;
+            bool on = line.Enabled && !string.IsNullOrEmpty(line.Template);
             text.enabled = on;
             if (!on) continue;
+            // 分组行（BPM/判定/连击）由 LayoutGroupedCustomRows 排，跳过主列流式摆位。
+            if (line.StackTarget != 0) continue;
             // 行偏移叠加：拖拽编辑器 / 设置里 X/Y 写到 line.OffsetX/Y，
             // 进栈行 = 流式位置 + 行偏移（每行可单独微调）。
             text.rectTransform.anchoredPosition = new Vector2(228 + line.OffsetX, y + line.OffsetY);
-            y -= 35;
+            // 同上：自定义行按自身高度递推，内置行仍走 SetupText 的固定 35。
+            y -= (int)Mathf.Max(35f, text.preferredHeight + 4f);
         }
 
         _overlay.UpdateProgress();

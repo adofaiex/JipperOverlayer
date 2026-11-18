@@ -64,7 +64,7 @@ public static class Tr
         SeparatorHint,
         Templates, TemplateHint, CopyTagList, TagListCopied, ResetTemplates,
         TagList, TagListHint, TagCopied,
-        CustomText, CustomTextHint, AddLine, StackLayout, FreeLayout,
+        CustomText, CustomTextHint, AddLine, StackLayout, FreeLayout, StackMain, StackBpm, StackJudge, StackCombo,
         PerLineAlign, PerLineStyle, PerLineFont, FollowMain, TagSearch, HideTitle, TemplateExamples, ImportBuiltin, LineColor, ShowOutsidePlay, EffectTools, Insert, CustomTags, CustomTagHint, AddTag,
         SfxGradient, SfxAnim, SfxEase, SizeHint,
         AlignTL, AlignT, AlignTR, AlignL, AlignC, AlignR, AlignBL, AlignB, AlignBR,
@@ -136,8 +136,8 @@ public static class Tr
              "Text Templates", "Syntax: {Tag}, {Tag:0.00}, {Tag(1)} = coop player index, {{ }} = literal brace. Empty = built-in rendering; a non-empty template replaces that whole line (colors via <color=#RRGGBB>).",
              "Copy Tag List", "Tag list copied", "Reset Templates",
              "Available Tags", "Every tag below works in any template. Click a tag name to copy it.", "Copied",
-             "Custom Text Lines", "Extra lines you define yourself. Each line is a template; choose Stack to flow with the main column, or Free to place it with its own X/Y offset.",
-             "Add Line", "Stack", "Free", "Align", "Style", "Font", "Main", "Search", "Hide Title", "Examples", "Import Built-in", "Text colour", "Show outside play", "Effect tools", "Insert", "Custom tags", "Name = letters/digits/underscore. Template may reference any tag (incl. other custom tags; avoid cycles). Changes apply instantly.", "Add tag", "Gradient", "Animation", "Easing", "Template <size> tag wins",
+             "Custom Text Lines", "Extra lines you define yourself. Each line is a template; pick Free to place it with its own X/Y offset, or one of the stack slots (Main / BPM / Judge / Combo) to dock it right under the last line of that group.",
+             "Add Line", "Stack", "Free", "Main", "BPM", "Judge", "Combo", "Align", "Style", "Font", "Main", "Search", "Hide Title", "Examples", "Import Built-in", "Text colour", "Show outside play", "Effect tools", "Insert", "Custom tags", "Name = letters/digits/underscore. Template may reference any tag (incl. other custom tags; avoid cycles). Changes apply instantly.", "Add tag", "Gradient", "Animation", "Easing", "Template <size> tag wins",
              "TL", "T", "TR", "L", "C", "R", "BL", "B", "BR",
              "Regular", "B", "I", "B+I" ],
 
@@ -203,8 +203,8 @@ public static class Tr
              "텍스트 템플릿", "문법: {Tag}, {Tag:0.00}, {Tag(1)} = 협동 플레이어 번호, {{ }} = 리터럴 중괄호. 비우면 내장 렌더링, 값이 있으면 해당 줄 전체를 템플릿이 대체합니다 (색상은 <color=#RRGGBB>).",
              "태그 목록 복사", "태그 목록을 복사했습니다", "템플릿 초기화",
              "사용 가능한 태그", "아래 태그는 모든 템플릿에서 사용할 수 있습니다. 태그 이름을 클릭하면 복사됩니다.", "복사됨",
-             "사용자 정의 텍스트", "직접 추가하는 줄입니다. 각 줄은 템플릿이며, Stack 은 메인 열에 이어서, Free 는 자체 X/Y 위치로 배치합니다.",
-             "줄 추가", "스택", "자유", "정렬", "스타일", "글꼴", "메인", "검색", "제목 숨기기", "예시", "내장 렌더링 가져오기", "텍스트 색상", "플레이 외 표시", "이펙트 도구", "삽입", "커스텀 태그", "이름 = 영문/숫자/밑줄. 템플릿은 모든 태그를 참조할 수 있습니다(다른 커스텀 태그 포함, 순환 금지). 변경 즉시 적용.", "태그 추가", "그라데이션", "애니메이션", "이징", "템플릿 <size> 태그가 우선",
+             "사용자 정의 텍스트", "직접 추가하는 줄입니다. 각 줄은 템플릿이며, Free 는 자체 X/Y 위치로, 스택 슬롯(메인 / BPM / 판정 / 콤보)은 해당 그룹의 마지막 줄 바로 아래에 이어서 배치합니다.",
+             "줄 추가", "스택", "자유", "메인", "BPM", "판정", "콤보", "정렬", "스타일", "글꼴", "메인", "검색", "제목 숨기기", "예시", "내장 렌더링 가져오기", "텍스트 색상", "플레이 외 표시", "이펙트 도구", "삽입", "커스텀 태그", "이름 = 영문/숫자/밑줄. 템플릿은 모든 태그를 참조할 수 있습니다(다른 커스텀 태그 포함, 순환 금지). 변경 즉시 적용.", "태그 추가", "그라데이션", "애니메이션", "이징", "템플릿 <size> 태그가 우선",
              "좌상", "상", "우상", "좌", "중", "우", "좌하", "하", "우하",
              "보통", "B", "I", "B+I" ],
 
@@ -270,8 +270,8 @@ public static class Tr
              "文本模板", "语法：{Tag}、{Tag:0.00}、{Tag(1)} = 合作模式玩家序号，{{ }} = 字面花括号。留空 = 内置渲染；填了模板后该行整行由模板接管（颜色用 <color=#RRGGBB>）。",
              "复制 tag 列表", "tag 列表已复制", "重置模板",
              "可用 Tag 列表", "下列 tag 都能写进任意模板；点击 tag 名即可复制 {Tag}。", "已复制",
-             "自定义文本行", "自己新增的文本行。每行是一个模板：选「进栈」会接在主列后面自动往下排，选「自由」则用自己的 X/Y 定位。",
-             "添加一行", "进栈", "自由", "对齐", "样式", "字体", "主", "搜索", "隐藏标题", "示例", "导入内置渲染", "文本颜色", "非游玩时显示", "效果工具", "插入", "自定义 tag", "名称 = 字母/数字/下划线。模板可引用任意 tag（含其他自定义 tag，注意别成环）。改完立即生效。", "添加 tag", "渐变", "动画", "缓动", "模板 <size> 优先",
+             "自定义文本行", "自己新增的文本行。每行是一个模板：选「自由」用自己的 X/Y 定位，选主栈 / BPM / 判定 / 连击则接在该组最后一行下面。",
+             "添加一行", "进栈", "自由", "主栈", "BPM", "判定", "连击", "对齐", "样式", "字体", "主", "搜索", "隐藏标题", "示例", "导入内置渲染", "文本颜色", "非游玩时显示", "效果工具", "插入", "自定义 tag", "名称 = 字母/数字/下划线。模板可引用任意 tag（含其他自定义 tag，注意别成环）。改完立即生效。", "添加 tag", "渐变", "动画", "缓动", "模板 <size> 优先",
              "左上", "上", "右上", "左", "中", "右", "左下", "下", "右下",
              "常", "B", "I", "B+I" ],
     ];
@@ -293,7 +293,9 @@ public static class Tr
     {
         try
         {
-            int count = System.Enum.GetValues(typeof(Key)).Length;
+            // 用 Count 哨兵的值 = 真实键数（枚举末尾的 Count 本身不占文案位，
+            // 拿 Enum.GetValues().Length 会把哨兵也算进去，永远差 1 误报）。
+            int count = (int)Key.Count;
             for (int lang = 0; lang < Data.Length; lang++)
             {
                 if (Data[lang].Length == count) continue;

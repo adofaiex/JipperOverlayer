@@ -958,7 +958,7 @@ public class Overlay
         {
             var l = lines[i];
             if (l == null) { sb.Append("|null"); continue; }
-            sb.Append('|').Append(l.InStack ? 'S' : 'F').Append(',').Append(l.FontSize);
+            sb.Append('|').Append(l.InStack ? 'S' : 'F').Append(l.StackTarget).Append(',').Append(l.FontSize);
         }
         return sb.ToString();
     }
@@ -974,27 +974,56 @@ public class Overlay
         for (int i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
-            bool inStack = line == null || line.InStack;
+            // 与 CustomTextLine.InStack 的默认值保持一致：配置缺项（null 行）也按自由坐标处理，
+            // 免得它被挂进主容器后又被容器开关连带熄掉。
+            bool inStack = line != null && line.InStack;
             var go = new GameObject("CustomText" + i);
             var rt = go.AddComponent<RectTransform>();
-            rt.SetParent(inStack && _mainContainer ? _mainContainer.transform : Canvas.transform, false);
+            // 进栈行挂到目标分组的 RectTransform 下（主栈 = 主容器，其余 = BPM/判定/连击本体），
+            // 这样分组被拖动、改偏移、连击数字弹跳时行会自动跟随；自由行挂画布根。
+            int target = inStack ? Mathf.Clamp(line?.StackTarget ?? 0, 0, 3) : -1;
+            Transform parent = Canvas.transform;
+            if (target == 0 && _mainContainer) parent = _mainContainer.transform;
+            else if (target > 0) { var group = GetStackGroupTransform(target); if (group) parent = group; }
+            rt.SetParent(parent, false);
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
-            rt.sizeDelta = new Vector2(456, 30);
+            // 宽度不再硬编码 456：0 = 不换行（长关卡名保持单行），> 0 = 换行宽度。
+            float wrap = line != null ? line.WrapWidth : 456f;
+            bool autoH = line == null || line.AutoHeight;
+            rt.sizeDelta = new Vector2(wrap > 0f ? wrap : 456f, autoH ? 30f : line.Height);
             // 初始位置：进栈行按主栈流式排（菜单模式首次点亮时还没跑过 SetupLocation，
-            // 不给初值会堆在 (0,0)）；自由行直接落配置偏移。
-            rt.anchoredPosition = inStack
-                ? new Vector2(228, -15f - 35f * i)
-                : new Vector2(16f + (line?.OffsetX ?? 0f), -16f + (line?.OffsetY ?? 0f));
+            // 不给初值会堆在 (0,0)）；自由行直接落配置偏移。分组行下一次布局刷新会归位。
+            rt.anchoredPosition = !inStack
+                ? new Vector2(16f + (line?.OffsetX ?? 0f), -16f + (line?.OffsetY ?? 0f))
+                : target == 0 ? new Vector2(228, -15f - 35f * i)
+                : new Vector2(0f, -35f);
             var text = go.AddComponent<TextMeshProUGUI>();
             text.font = FontManager.GetFont(line != null && line.FontIndex >= 0 ? line.FontIndex : s.GetFontIndexForSlot(Settings.FontSlot.Main));
             text.fontSize = line != null && line.FontSize > 0 ? line.FontSize : mainSize;
             text.alignment = line != null && line.Align >= 0 ? (TextAlignmentOptions)line.Align : (TextAlignmentOptions)s.MainAlign;
             text.fontStyle = line != null && line.Style >= 0 ? (FontStyles)line.Style : (FontStyles)s.MainStyle;
+            // 换行开关与行距：宽度 0 表示关闭自动换行，长关卡名不再被切成两行。
+            text.textWrappingMode = wrap > 0f ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+            text.lineSpacing = line != null ? line.LineSpacing : 0f;
+            text.characterSpacing = line != null ? line.CharSpacing : 0f;
+            text.paragraphSpacing = line != null ? line.ParagraphSpacing : 0f;
+            if (line != null) rt.localEulerAngles = new Vector3(0f, 0f, line.RotZ);
+            // 自动高度：多行文本必须让矩形跟着文本长。高度固定 30 时，TMP 会以 30 为基准
+            // 垂直居中整块文本，换行后首行被顶到锚点上方、整体视觉位置漂移。
+            var fitter = go.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = autoH ? ContentSizeFitter.FitMode.PreferredSize : ContentSizeFitter.FitMode.Unconstrained;
             text.color = line != null && line.TextColor != null ? (Color)line.TextColor : Color.white;
             ShadowManager.ApplyShadow(text, line != null && line.EffectOverride && line.Effect != null
                 ? line.Effect : s.GetEffectForSlot(Settings.FontSlot.Main));
             CustomTexts.Add(text);
         }
+        // 新建的行 localScale 默认 1，而全局「大小」是靠 UpdateSize() 往直接子节点写
+        // localScale 生效的；UpdateSize 只在构造时跑过一次，那时这些行还不存在。
+        // 不补这一次，重启后行会按 1.0 缩放渲染（偏大、位置也跟着偏），直到任意设置
+        // 操作触发 RefreshVisibility→UpdateSize 才恢复正常——这正是「重启后关卡名
+        // 大小/位置不对，展开字体列表就恢复」的根因。
+        UpdateSize();
     }
 
     /// <summary>自由坐标行的位置（栈行由 ExtendedOverlayModule.SetupLocation 排）。</summary>
@@ -1021,6 +1050,30 @@ public class Overlay
             var text = CustomTexts[i];
             var line = lines[i];
             if (!text) continue;
+            // 换行宽度 / 行距即时生效，不需要重建（改数值时逐字符重建会丢焦点）。
+            if (line != null)
+            {
+                float wrap = line.WrapWidth;
+                text.textWrappingMode = wrap > 0f ? TextWrappingModes.Normal : TextWrappingModes.NoWrap;
+                text.lineSpacing = line.LineSpacing;
+                text.characterSpacing = line.CharSpacing;
+                text.paragraphSpacing = line.ParagraphSpacing;
+                var lrt = text.rectTransform;
+                float wantW = wrap > 0f ? wrap : 456f;
+                if (!Mathf.Approximately(lrt.sizeDelta.x, wantW))
+                    lrt.sizeDelta = new Vector2(wantW, lrt.sizeDelta.y);
+                // 旋转比较角度差，避免 -10 与 350 每帧判不相等。
+                if (Mathf.Abs(Mathf.DeltaAngle(lrt.localEulerAngles.z, line.RotZ)) > 0.01f)
+                    lrt.localEulerAngles = new Vector3(0f, 0f, line.RotZ);
+                var fit = text.GetComponent<ContentSizeFitter>();
+                if (fit)
+                {
+                    var mode = line.AutoHeight ? ContentSizeFitter.FitMode.PreferredSize : ContentSizeFitter.FitMode.Unconstrained;
+                    if (fit.verticalFit != mode) fit.verticalFit = mode;
+                }
+                if (!line.AutoHeight && !Mathf.Approximately(lrt.sizeDelta.y, line.Height))
+                    lrt.sizeDelta = new Vector2(lrt.sizeDelta.x, line.Height);
+            }
             // 非游玩显示模式（_outsidePlayActive）下，只有勾了「非游玩时显示」的行参与渲染。
             bool on = line != null && line.Enabled && !string.IsNullOrEmpty(line.Template)
                 && (!_outsidePlayActive || line.ShowOutsidePlay);
@@ -1032,6 +1085,89 @@ public class Overlay
             text.enabled = true;
             text.text = TemplateEngine.Evaluate(line.Template) ?? "";
             text.color = line != null && line.TextColor != null ? (Color)line.TextColor : Color.white;
+            // TMP 在写入含新字形（尤其 CJK fallback）的文本后会重建字体图集/材质，
+            // 把 fontSharedMaterial 换回字体默认材质——表现为「重进游戏时这一行
+            // 突然用上全局软阴影，进设置展开字体触发 ApplyFontToAll 才恢复」。
+            // 这里在每次求值后把该行期望的特效材质重新指回去：缓存命中时 Apply 只是
+            // 查字典 + 赋值，不重建材质，10Hz 自愈且无闪烁。
+            var wantFx = line.EffectOverride && line.Effect != null
+                ? line.Effect : Main.Settings?.GetEffectForSlot(Settings.FontSlot.Main);
+            ShadowManager.EnsureMaterial(text, wantFx);
+        }
+        // BPM/判定/连击三组的行：组内文本高度会变（BPM 换行、连击数字弹跳），
+        // 每次刷新顺手归位，保证它们始终贴在该组最后一行下面。
+        LayoutGroupedCustomRows();
+    }
+
+    /// <summary>进栈目标对应的分组变换：1 = BPM，2 = 判定（取最后一个活动槽位），3 = 连击。</summary>
+    private Transform GetStackGroupTransform(int target) => target switch
+    {
+        1 => _bpmObject ? _bpmObject.transform : null,
+        2 => JudgeGroupTransform(),
+        3 => ComboTransform,
+        _ => null,
+    };
+
+    private Transform JudgeGroupTransform()
+    {
+        int count = VersionSafe.IsCoopMode() ? Math.Min(VersionSafe.GetPlayerCount(), 4) : 1;
+        for (int i = Mathf.Clamp(count, 1, 4) - 1; i >= 0; i--)
+            if (_judgementObjects[i]) return _judgementObjects[i].transform;
+        return null;
+    }
+
+    /// <summary>BPM 文本块高度：TopRight 对齐，文本从矩形顶部往下排，所以底边就是它。</summary>
+    private float BpmTextHeight() => BPMText ? Mathf.Max(BPMText.preferredHeight, BPMText.fontSize) : 0f;
+
+    /// <summary>连击数值块在 Combo 容器本地坐标里的底边：数值框锚在容器 45% 高度、垂直居中。</summary>
+    private float ComboTextBottom()
+    {
+        if (!ComboTransform || !ComboText) return 0f;
+        float anchorY = ComboTransform.rect.height * (0.45f - ComboTransform.pivot.y);
+        return anchorY - Mathf.Max(ComboText.preferredHeight, ComboText.fontSize) * 0.5f;
+    }
+
+    /// <summary>把挂在 BPM / 判定 / 连击 三组下的自定义行，按 35px 步进排到该组最后一行下面。
+    /// 行是分组的子节点，所以这里只算本地坐标；分组显隐会连带行（关掉 BPM 显示时，
+    /// 挂在 BPM 下的行也一起隐藏，语义上它们属于那一块）。</summary>
+    internal void LayoutGroupedCustomRows()
+    {
+        var lines = Main.Settings?.CustomTexts;
+        if (lines == null) return;
+        // 每组一个游标：首行按 35px 起排，之后按上一行的实际高度往下走
+        // （单行仍是 35，多行/大字号行不会压到下一行）。
+        float bpmY = -BpmTextHeight() - 35f;
+        float judgeY = -35f;
+        float comboY = ComboTextBottom() - 35f;
+        for (int i = 0; i < CustomTexts.Count && i < lines.Count; i++)
+        {
+            var text = CustomTexts[i];
+            var line = lines[i];
+            if (!text || line == null || !line.InStack) continue;
+            int target = Mathf.Clamp(line.StackTarget, 0, 3);
+            if (target == 0) continue;
+            var rt = text.rectTransform;
+            var want = GetStackGroupTransform(target);
+            if (want != null && rt.parent != want) rt.SetParent(want, false);
+            float step = Mathf.Max(35f, text.preferredHeight + 4f);
+            switch (target)
+            {
+                case 1:
+                    rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1f, 1f);
+                    rt.anchoredPosition = new Vector2(line.OffsetX, bpmY + line.OffsetY);
+                    bpmY -= step;
+                    break;
+                case 2:
+                    rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0f);
+                    rt.anchoredPosition = new Vector2(line.OffsetX, judgeY + line.OffsetY);
+                    judgeY -= step;
+                    break;
+                default:
+                    rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+                    rt.anchoredPosition = new Vector2(line.OffsetX, comboY + line.OffsetY);
+                    comboY -= step;
+                    break;
+            }
         }
     }
 
@@ -1817,7 +1953,9 @@ public class Overlay
         LastMultiplier = (float)GameRefs.SongPitch;
         if (!AutoOnceEnabled) PlayCount.AddAttempts(LastHash, StartProgress);
         SetupTextManager();
-        ApplyFontToAll();
+        // ApplyFontToAll 对自定义行的字体/阴影/字号应用遍历的是运行时 CustomTexts 列表；
+        // 放在 Rebuild 之前跑时列表还是空的，这一整段会被跳过——这正是「重启后样式不对、
+        // 进设置一改就恢复」的两条路径差异之一。真正调用挪到 Rebuild 之后。
         GameObject.SetActive(true);
         if (_mono) _mono.enabled = true;
         // 退出非游玩显示模式：恢复被菜单模式隐藏的内置元素可见性。
@@ -1852,6 +1990,13 @@ public class Overlay
         // 任意可栈排元素开启即需要布局（原条件漏了 Accuracy/XAccuracy/MapTime，
         // 只开精度时栈不会被摆位——顺手修正；XScore/潜力值同样并入）
         MaybeRebuildCustomTexts();
+        // 启动路径补齐到与设置改动（ApplyFontToAll + RefreshVisibility）同一套应用：
+        // 字体/阴影/字号、对齐、字体样式、位置偏移统一在这里跑一遍，确保磁盘配置读进来后
+        // 立刻渲染成与设置面板一致的状态，而不是停在 Rebuild 的初值。
+        ApplyFontToAll();
+        ApplyAlignment();
+        ApplyFontStyle();
+        ApplyPositionOffsets();
         if (s.AnyStackedTextVisible)
             SetupLocationMain();
         RefreshCustomTexts();
