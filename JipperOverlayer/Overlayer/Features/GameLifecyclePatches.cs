@@ -17,17 +17,9 @@ internal static class GameLifecyclePatches
             typeof(UIControllerWipeToBlackPatch),
             typeof(ScnEditorResetScenePatch),
             typeof(ControllerStartLoadingScenePatch),
-            typeof(ControllerChangeStatePatch)
+            typeof(ControllerChangeStatePatch),
+            typeof(PlanetMoveToNextFloorPatch)
         );
-
-        PatchManager.RegisterPatches(() => Main.Settings.ShowProgress || Main.Settings.ShowAccuracy ||
-              Main.Settings.ShowXAccuracy || Main.Settings.ShowXScore || Main.Settings.ShowMusicTime ||
-              Main.Settings.ShowMapTime ||
-              Main.Settings.ShowCheckpoint || Main.Settings.ShowBest || Main.Settings.ShowProgressBar ||
-              Main.Settings.ShowTimingScale || Main.Settings.ShowAttempt || Main.Settings.ShowFullAttempt ||
-              Main.Settings.ShowState || Main.Settings.ShowDeath || Main.Settings.ShowStart || Main.Settings.ShowTiming ||
-              Main.Settings.ShowCombo,
-            typeof(PlanetMoveToNextFloorPatch));
 
         // 原先捆绑在 ExtendedOverlay 总开关下的三个补丁，改为各自按所属设置独立门控
         PatchManager.RegisterPatches(() => Main.Settings.HideDebugText, typeof(ScrShowIfDebugUpdatePatch));
@@ -133,10 +125,7 @@ internal static class PlanetMoveToNextFloorPatch
         var overlay = GameLifecycleHelper.GetOverlay();
         if (overlay == null) return;
         var s = Main.Settings;
-        if (s.ShowProgress || s.ShowAccuracy || s.ShowXAccuracy || s.ShowMusicTime || s.ShowMapTime
-            || s.ShowCheckpoint || s.ShowBest || s.ShowProgressBar || s.ShowState || s.ShowDeath
-            || s.ShowStart || s.ShowTiming || s.ShowCombo)
-            overlay.UpdateProgress(__instance);
+        overlay.UpdateProgress(__instance);
         if (s.ShowTimingScale) overlay.UpdateTimingScale();
         if (s.ShowAttempt || s.ShowFullAttempt) overlay.UpdateAttempts();
         // XScore 的 MAX−n 依赖 currentSeqID 推剩余格；AddHit→CalculatePercentAcc 后缀触发时

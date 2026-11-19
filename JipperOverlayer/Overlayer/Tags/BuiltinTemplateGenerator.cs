@@ -7,12 +7,11 @@ namespace JipperOverlayer.Overlayer.Tags;
 /// <summary>
 /// 把内置渲染逐槽位导出为等价模板，一键填满全部模板字段。
 /// 目的：从「和现在一模一样」的起点开始自定义，而不是从空白摸索。
-/// 标签/分隔符取当前 LabelConfig，渐变色转成 {ColorRange}，小数位取当前设置值。
+/// 标签取导入时的 LabelConfig，聚合行的分隔符在求值时读取；静态渐变色转成 {ColorRange}。
 ///
 /// 已知偏差（静态模板表达不了的条件分支，导出后可在面板继续改）：
-/// - 内置数值是 Math.Round（尾零省略），模板用固定小数格式（0.00 补齐尾零）；
-/// - Accuracy/XAccuracy 刚好满命中转金色、XScore 满级转金：ColorRange 只有两端点，近似为整段渐变；
-/// - Progress 的起始段「仅 StartTile&gt;0 才显示」：模板无条件输出，故不导出起始段；
+/// - 内置数值是 Math.Round（尾零省略）；聚合 tag 同样按小数位设置取整并省略尾零，
+///   仅 Fps/Start 等少数静态模板保留固定 0.00 格式；
 /// - State 的按状态变色、Death/Timing 的红绿渐变（取绝对值映射）无法静态表达，值以白色导出；
 /// - 判定行按 XPerfect 模式的配色导出（r148 无原生 XPerfect 时绿色不含 Auto）。
 /// </summary>
@@ -23,23 +22,21 @@ internal static class BuiltinTemplateGenerator
         var L = s.Labels;
         var C = s.Colors;
 
-        string progressGrad = Grad("Progress", 0, 100, C.Progress);
-        string accGrad = Grad("Accuracy", 0, 100, C.Accuracy);
-        string xaccGrad = Grad("XAccuracy", 0, 100, C.XAccuracy);
         string bestGrad = Grad("Best", 0, 100, C.Best);
         string bpmGrad = Grad("TileBpm", 0, s.BpmColorMax, C.Bpm);
         string comboGrad = Grad("Combo", 0, s.ComboColorMax, C.Combo);
 
         // 数值 tag 已按各自槽位的小数位设置取整（内置同款 Math.Round，尾零省略），
         // 模板不再写死格式——调小数位滑条时模板跟着变。
-        L.ProgressTemplate = Head(L.Progress, L.ProgressSeparator) + Wrap(progressGrad, "{Progress}%");
-        L.AccuracyTemplate = Head(L.Accuracy, L.AccuracySeparator) + Wrap(accGrad, "{Accuracy}%");
-        L.PotAccuracyTemplate = Head("P." + L.Accuracy, L.AccuracySeparator) + WrapGold(accGrad, C.Accuracy, "{PotentialAccuracy}%");
-        L.XAccuracyTemplate = Head(L.XAccuracy, L.XAccuracySeparator) + WrapGold(xaccGrad, C.XAccuracy, "{XAccuracy}%");
-        L.PotXAccuracyTemplate = Head("P." + L.XAccuracy, L.XAccuracySeparator) + WrapGold(xaccGrad, C.XAccuracy, "{PotentialXAccuracy}%");
-        // XScore：内置配色 t≥1 转 PerfectColor 金——用 XScoreRatio + atMax 参数复刻。
-        L.XScoreTemplate = Head("XScore", L.XScoreSeparator) + WrapGold(Grad("XScoreRatio", 0, 100, C.XScore), C.XScore, "{XScore} (MAX-{XScoreLoss})");
-        L.PotXScoreTemplate = Head("P.XScore", L.XScoreSeparator) + "{PotentialXScore}";
+        // 聚合 tag 同时生成首分隔符与玩家间分隔符，游玩状态冻结时也保持一致。
+        // 将进度色点写入模板；每个分段仍用自己的原始进度从这份色板取色。
+        L.ProgressTemplate = Head(L.Progress, "") + "{ProgressDetailed(-1,true," + ProgressTemplateGradient.Export(C.Progress) + ")}";
+        L.AccuracyTemplate = Head(L.Accuracy, "") + "{AccuracyRun(-1,-1,false,true)}";
+        L.PotAccuracyTemplate = Head("P." + L.Accuracy, "") + "{AccuracyRun(-1,-1,true,true)}";
+        L.XAccuracyTemplate = Head(L.XAccuracy, "") + "{XAccuracyRun(-1,-1,false,true)}";
+        L.PotXAccuracyTemplate = Head("P." + L.XAccuracy, "") + "{XAccuracyRun(-1,-1,true,true)}";
+        L.XScoreTemplate = Head("XScore", "") + "{XScoreRun(-1,false,true)}";
+        L.PotXScoreTemplate = Head("P.XScore", "") + "{XScoreRun(-1,true,true)}";
         L.MusicTimeTemplate = Head(L.MusicTime, L.MusicTimeSeparator) + "{MusicTime}~{MusicTotal}";
         L.MapTimeTemplate = Head(L.MapTime, L.MapTimeSeparator) + "{MapTime}~{MapTotal}";
         L.CheckpointTemplate = Head(L.Checkpoint, L.CheckpointSeparator) + "{CheckpointsUsed} ({CheckpointPassed}/{CheckpointsTotal})";
@@ -88,25 +85,6 @@ internal static class BuiltinTemplateGenerator
     private static string Wrap(string grad, string value)
     {
         return "<color=#{" + grad + "}>" + value + "</color>";
-    }
-
-    /// <summary>带顶格色的包装：把 atMax 参数插入 ColorRange 的闭合括号之前
-    /// （Grad 产物自带「)」，直接往后拼会把参数落到括号外，tag 解析成无名参数全空 → 返回空串）。</summary>
-    private static string WrapGold(string grad, ColorPerDictionary d, string value)
-    {
-        int close = grad.LastIndexOf(')');
-        // 三个逗号 = 两个空位（ease、maxLength 走默认值），第 8 个实参是 atMax 色。
-        // 之前拼了四个逗号产生 9 个参数，超过 ColorRange 的 8 个形参，被「参数过多」拒绝。
-        string injected = close >= 0 ? grad.Insert(close, ",,," + GoldHex(d)) : grad;
-        return "<color=#{" + injected + "}>" + value + "</color>";
-    }
-
-    private static string GoldHex(ColorPerDictionary d)
-    {
-        // 内置满命中金是 ColorConfig.SettingsGold 常量（刻意不受全局一键染色影响，
-        // 见 commit 31a895e），这里必须用同一常量——读 PerfectColor 会被用户的
-        // 「应用到所有」染成别的颜色（本次红色就是这么来的）。
-        return "FFDA00"; // = ColorUtility.ToHtmlStringRGB(new Color(1f, 0.8549f, 0f))
     }
 
     private static string Fmt(int decimals)

@@ -1,6 +1,7 @@
 using System;
 using JipperOverlayer.Overlayer.Features;
 using JipperOverlayer.Overlayer.Util;
+using UnityEngine;
 
 namespace JipperOverlayer.Overlayer.Tags;
 
@@ -177,6 +178,172 @@ internal static partial class GameTags
 
     [Tag("StartProgress")]
     internal static double StartProgress() => R((O?.StartProgress ?? 0f) * 100.0);
+
+    /// <summary>进度整段：从检查点开始时附带起始进度；联机逐玩家显示。
+    /// 首段默认不带分隔符；导入模板时显式开启。</summary>
+    [Tag("ProgressRun")]
+    internal static string ProgressRun(int decimals = -1, bool includeSeparator = false, string gradient = null)
+    {
+        var s = Main.Settings;
+        int dp = NumberDecimals(s?.ProgressDecimal ?? 2, decimals);
+        var o = O;
+        bool fromCheckpoint = o != null && o.StartTile > 0;
+        string separator = s?.Labels?.ProgressSeparator;
+        string prefix = includeSeparator ? separator : "";
+        var palette = ProgressTemplateGradient.Resolve(gradient) ?? s?.Colors?.Progress;
+        string Segment(float progress) => Colorize(palette?.GetHex(progress, true), PercentText(progress, dp));
+        if (VersionSafe.IsCoopMode())
+        {
+            var datas = Coop?.PlayerDatas;
+            string players = CoopSegments(separator, -1, i => Segment(datas == null ? GameRefs.PercentComplete : datas[i].Progress));
+            return prefix + (fromCheckpoint ? Segment(o.StartProgress) + " ~" + separator + players : players);
+        }
+        string current = Segment(Normal?.Progress ?? GameRefs.PercentComplete);
+        return prefix + (fromCheckpoint ? Segment(o.StartProgress) + " ~ " + current : current);
+    }
+
+    /// <summary>详细进度开启时显示格数与百分比；联机和普通模式用 ProgressRun。</summary>
+    [Tag("ProgressDetailed")]
+    internal static string ProgressDetailed(int decimals = -1, bool includeSeparator = false, string gradient = null)
+    {
+        var s = Main.Settings;
+        if (!(s?.DetailedProgress ?? false) || VersionSafe.IsCoopMode()) return ProgressRun(decimals, includeSeparator, gradient);
+        int dp = NumberDecimals(s.ProgressDecimal, decimals);
+        int cur = SeqId;
+        int last = (int)TotalTile();
+        float progress = Normal?.Progress ?? GameRefs.PercentComplete;
+        var palette = ProgressTemplateGradient.Resolve(gradient) ?? s.Colors?.Progress;
+        string hex = palette == null ? null : ColorUtility.ToHtmlStringRGBA(palette.GetColor(progress));
+        string prefix = includeSeparator ? s.Labels?.ProgressSeparator : "";
+        return prefix + Colorize(hex, cur + " / " + last
+            + (cur == last ? "" : " [-" + (last - cur) + "]")
+            + " (" + PercentText(progress, dp) + ")");
+    }
+
+    // 用 playerIndex 而非 player：后者省略时会被 TagManager 替换成当前玩家，
+    // 而整行 tag 需要在省略时汇总全员，只有显式指定非负索引才挑出一名玩家。
+    [Tag("AccuracyRun")]
+    internal static string AccuracyRun(int playerIndex = -1, int decimals = -1, bool potentialOnly = false, bool includeSeparator = false)
+        => AccuracyRunCore(false, playerIndex, decimals, potentialOnly, includeSeparator);
+
+    [Tag("XAccuracyRun")]
+    internal static string XAccuracyRun(int playerIndex = -1, int decimals = -1, bool potentialOnly = false, bool includeSeparator = false)
+        => AccuracyRunCore(true, playerIndex, decimals, potentialOnly, includeSeparator);
+
+    private static string AccuracyRunCore(bool isX, int playerIndex, int decimals, bool potentialOnly, bool includeSeparator)
+    {
+        var s = Main.Settings;
+        var type = isX ? s?.XAccuracyTextType ?? PotentialTextType.Current : s?.AccuracyTextType ?? PotentialTextType.Current;
+        int dp = NumberDecimals(isX ? s?.XAccuracyDecimal ?? 2 : s?.AccuracyDecimal ?? 2, decimals);
+        string separator = isX ? s?.Labels?.XAccuracySeparator : s?.Labels?.AccuracySeparator;
+        string segments = VersionSafe.IsCoopMode()
+            ? CoopSegments(separator, playerIndex, i => AccuracySegment(i, isX, type, dp, potentialOnly, true))
+            : AccuracySegment(0, isX, type, dp, potentialOnly, false);
+        return includeSeparator && segments.Length > 0 ? separator + segments : segments;
+    }
+
+    private static string AccuracySegment(int index, bool isX, PotentialTextType type, int dp, bool potentialOnly, bool coop)
+    {
+        if (coop && TrackerFor(index) == null) return "";
+        var colors = Main.Settings?.Colors;
+        float xAcc = PlayerXAcc(index);
+        float current = isX ? xAcc : PlayerAcc(index);
+        int seq = PlayerSeqId(index);
+        bool showPotential = potentialOnly || type == PotentialTextType.Potential;
+        bool showBoth = !showPotential && ShowInlinePotential(type, coop);
+        int remaining = 0;
+        float potential = current;
+        if (showPotential || showBoth)
+        {
+            var hits = coop ? SafePlayerHits(index) : Hits;
+            int judged = AccuracyMath.GetJudgedTiles(hits, seq);
+            remaining = AccuracyMath.GetRemainingTiles(seq);
+            potential = isX ? AccuracyMath.GetPotentialXAccuracy(current, judged, remaining)
+                : AccuracyMath.GetPotentialAccuracy(hits, current, judged, remaining);
+        }
+
+        // 内置联机段用当前值决定色彩；单人的独立潜力行用潜力值决定色彩。
+        bool colorPotential = !coop && showPotential;
+        float valueForColor = colorPotential ? potential : current;
+        float maxAcc = 1 + (seq - (O?.NoCheckStartTile ?? 0) + 1) * 0.0001f;
+        float accColorRatio = xAcc == 1 ? 1 : valueForColor / (maxAcc + (colorPotential ? remaining * 0.0001f : 0f));
+        string hex = colors == null ? null : coop
+            ? (isX ? colors.GetXAccuracyHex(valueForColor, valueForColor == 1) : colors.GetAccuracyHex(accColorRatio, xAcc == 1))
+            : ColorUtility.ToHtmlStringRGBA(isX ? colors.GetXAccuracyColor(valueForColor, valueForColor == 1)
+                : colors.GetAccuracyColor(accColorRatio, xAcc == 1));
+        string text = showPotential ? PercentText(potential, dp) : PercentText(current, dp);
+        if (showBoth) text += " (" + PercentText(potential, dp) + ")";
+        return Colorize(hex, text);
+    }
+
+    [Tag("XScoreRun")]
+    internal static string XScoreRun(int playerIndex = -1, bool potentialOnly = false, bool includeSeparator = false)
+    {
+        string separator = Main.Settings?.Labels?.XScoreSeparator;
+        string segments = VersionSafe.IsCoopMode()
+            ? CoopSegments(separator, playerIndex, i => XScoreSegment(i, potentialOnly, true))
+            : XScoreSegment(0, potentialOnly, false);
+        return includeSeparator && segments.Length > 0 ? separator + segments : segments;
+    }
+
+    private static string XScoreSegment(int index, bool potentialOnly, bool coop)
+    {
+        var s = Main.Settings;
+        GetXScoreValues(index, out int current, out int max, out int potential, out int total);
+        var type = s?.XScorePotentialType ?? PotentialTextType.Current;
+        var format = s?.XScoreTextType ?? XScoreTextType.MaxMinus;
+        bool showPotential = potentialOnly || type == PotentialTextType.Potential;
+        bool colorPotential = !coop && showPotential;
+        int colorValue = colorPotential ? potential : current;
+        int colorMax = colorPotential ? total : max;
+        float ratio = colorMax == 0 ? 1 : (float)colorValue / colorMax;
+        var colors = s?.Colors;
+        string hex = colors == null ? null : coop ? colors.GetXScoreHex(ratio)
+            : ColorUtility.ToHtmlStringRGBA(colors.GetXScoreColor(ratio));
+        string text = showPotential ? AccuracyMath.GetXScoreText(potential, total, format, potential: true)
+            : AccuracyMath.GetXScoreText(current, max, format);
+        if (!showPotential && ShowInlinePotential(type, coop))
+            text += " (" + AccuracyMath.GetXScoreText(potential, total, format, potential: true) + ")";
+        return Colorize(hex, text);
+    }
+
+    [Tag("XScoreText")]
+    internal static string XScoreText(int player = 0)
+        => XScoreValueText(Main.Settings?.XScoreTextType ?? XScoreTextType.MaxMinus, false, player);
+
+    [Tag("PotentialXScoreText")]
+    internal static string PotentialXScoreText(int player = 0)
+        => XScoreValueText(Main.Settings?.XScoreTextType ?? XScoreTextType.MaxMinus, true, player);
+
+    private static string XScoreValueText(XScoreTextType type, bool potential, int player)
+    {
+        GetXScoreValues(player, out int x, out int max, out int potX, out int potTotal);
+        return potential ? AccuracyMath.GetXScoreText(potX, potTotal, type, potential: true)
+            : AccuracyMath.GetXScoreText(x, max, type);
+    }
+
+    private static bool ShowInlinePotential(PotentialTextType type, bool coop)
+        => type == PotentialTextType.BothInOneLine || (coop && type == PotentialTextType.Both);
+
+    private static string CoopSegments(string separator, int playerIndex, Func<int, string> render)
+    {
+        int count = Coop?.PlayerDatas?.Length ?? VersionSafe.GetPlayerCount();
+        if (playerIndex >= 0) return playerIndex < count ? render(playerIndex) : "";
+        var sb = new System.Text.StringBuilder(128);
+        for (int i = 0; i < count; i++)
+        {
+            string segment = render(i);
+            if (string.IsNullOrEmpty(segment)) continue;
+            if (sb.Length > 0) sb.Append(separator);
+            sb.Append(segment);
+        }
+        return sb.ToString();
+    }
+
+    private static int NumberDecimals(int setting, int requested) => requested < 0 ? setting : Math.Min(requested, 4);
+    private static string PercentText(float fraction, int dp)
+        => Math.Round(fraction * 100, dp).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
+    private static string Colorize(string hex, string text) => "<color=#" + (hex ?? "FFFFFF") + ">" + text + "</color>";
 
     // ===== 杂项 =====
 
